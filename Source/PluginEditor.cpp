@@ -20,6 +20,7 @@ Env_genAudioProcessorEditor::Env_genAudioProcessorEditor (Env_genAudioProcessor&
 
 Env_genAudioProcessorEditor::~Env_genAudioProcessorEditor()
 {
+    setLookAndFeel(nullptr);
 }
 
 //==============================================================================

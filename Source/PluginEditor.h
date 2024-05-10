@@ -10,6 +10,7 @@
 
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
+#include "Components/customLookAndFeel.h"
 
 //==============================================================================
 /**
@@ -28,6 +29,9 @@ private:
     // This reference is provided as a quick way for your editor to
     // access the processor object that created it.
     Env_genAudioProcessor& audioProcessor;
+
+    customLookAndFeel otherLookAndFeel;
+    juce::ToggleButton lane_one_0b;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Env_genAudioProcessorEditor)
 };

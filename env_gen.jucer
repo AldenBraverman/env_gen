@@ -5,6 +5,12 @@
               companyName="_env_gen">
   <MAINGROUP id="kmGkhm" name="env_gen">
     <GROUP id="{89EB191A-2DA9-F943-069A-46BA1CC4D771}" name="Source">
+      <GROUP id="{EC122FB0-05F0-6664-58A1-027ABF0D5259}" name="Components">
+        <FILE id="LmyTyD" name="customLookAndFeel.cpp" compile="1" resource="0"
+              file="Source/Components/customLookAndFeel.cpp"/>
+        <FILE id="e2K8xf" name="customLookAndFeel.h" compile="0" resource="0"
+              file="Source/Components/customLookAndFeel.h"/>
+      </GROUP>
       <FILE id="XyVwjy" name="PluginProcessor.cpp" compile="1" resource="0"
             file="Source/PluginProcessor.cpp"/>
       <FILE id="tEnFcl" name="PluginProcessor.h" compile="0" resource="0"
