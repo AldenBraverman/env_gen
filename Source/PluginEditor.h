@@ -32,6 +32,7 @@ private:
 
     customLookAndFeel otherLookAndFeel;
     juce::ToggleButton lane_one_0b;
+    juce::TextButton lane_one_1b;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Env_genAudioProcessorEditor)
 };

@@ -24,6 +24,26 @@ customLookAndFeel::~customLookAndFeel()
     
 }
 
+//void customLookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& button, const juce::Colour& backgroundColor, bool, bool isButtonDown)
+//{
+//    auto buttonArea = button.getLocalBounds();
+//    g.setColour(juce::Colours::cyan);
+//    g.fillRect(buttonArea);
+//}
+
+void customLookAndFeel::drawTickBox(juce::Graphics& g, juce::Component& toggleButton, float x, float y, float w, float h, bool ticked, bool isEnabled, bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown)
+{
+    auto buttonArea = toggleButton.getLocalBounds();
+    g.setColour(juce::Colours::cyan);
+    g.fillRect(buttonArea);
+}
+
+void customLookAndFeel::drawToggleButton(juce::Graphics& g, juce::ToggleButton& toggleButton, bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown)
+{
+    auto buttonArea = toggleButton.getLocalBounds();
+    g.setColour(juce::Colours::red);
+    g.fillRect(buttonArea);
+}
 
 //void customLookAndFeel::paint (juce::Graphics& g)
 //{
