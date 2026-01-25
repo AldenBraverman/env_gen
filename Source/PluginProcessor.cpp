@@ -1,7 +1,8 @@
 /*
   ==============================================================================
 
-    This file contains the basic framework code for a JUCE plugin processor.
+    PluginProcessor.cpp
+    Envelope Generator Audio Plugin
 
   ==============================================================================
 */
@@ -10,194 +11,370 @@
 #include "PluginEditor.h"
 
 //==============================================================================
-Env_genAudioProcessor::Env_genAudioProcessor()
-#ifndef JucePlugin_PreferredChannelConfigurations
-     : AudioProcessor (BusesProperties()
-                     #if ! JucePlugin_IsMidiEffect
-                      #if ! JucePlugin_IsSynth
-                       .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
-                      #endif
-                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
-                     #endif
-                       )
-#endif
+EnvGenAudioProcessor::EnvGenAudioProcessor()
+    : AudioProcessor(BusesProperties()
+                     .withInput("Input", juce::AudioChannelSet::stereo(), true)
+                     .withOutput("Output", juce::AudioChannelSet::stereo(), true))
 {
+    // Get global parameter pointers
+    filterModeParam = dynamic_cast<juce::AudioParameterChoice*>(apvts.getParameter("filterMode"));
+    filterCutoffParam = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter("filterCutoff"));
+    filterResonanceParam = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter("filterResonance"));
+
+    // Get per-lane parameter pointers
+    const char* laneNames[] = { "lane1", "lane2", "lane3", "lane4" };
+    
+    for (int lane = 0; lane < NUM_LANES; ++lane)
+    {
+        juce::String prefix(laneNames[lane]);
+        
+        for (int step = 0; step < NUM_STEPS; ++step)
+        {
+            juce::String paramName = prefix + "_step" + juce::String(step);
+            laneParams[lane].steps[step] = dynamic_cast<juce::AudioParameterBool*>(apvts.getParameter(paramName));
+        }
+        
+        laneParams[lane].attack = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter(prefix + "_attack"));
+        laneParams[lane].hold = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter(prefix + "_hold"));
+        laneParams[lane].decay = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter(prefix + "_decay"));
+        laneParams[lane].rate = dynamic_cast<juce::AudioParameterChoice*>(apvts.getParameter(prefix + "_rate"));
+        laneParams[lane].destination = dynamic_cast<juce::AudioParameterChoice*>(apvts.getParameter(prefix + "_destination"));
+    }
 }
 
-Env_genAudioProcessor::~Env_genAudioProcessor()
+EnvGenAudioProcessor::~EnvGenAudioProcessor()
 {
 }
 
 //==============================================================================
-const juce::String Env_genAudioProcessor::getName() const
+const juce::String EnvGenAudioProcessor::getName() const
 {
     return JucePlugin_Name;
 }
 
-bool Env_genAudioProcessor::acceptsMidi() const
+bool EnvGenAudioProcessor::acceptsMidi() const
 {
-   #if JucePlugin_WantsMidiInput
-    return true;
-   #else
     return false;
-   #endif
 }
 
-bool Env_genAudioProcessor::producesMidi() const
+bool EnvGenAudioProcessor::producesMidi() const
 {
-   #if JucePlugin_ProducesMidiOutput
-    return true;
-   #else
     return false;
-   #endif
 }
 
-bool Env_genAudioProcessor::isMidiEffect() const
+bool EnvGenAudioProcessor::isMidiEffect() const
 {
-   #if JucePlugin_IsMidiEffect
-    return true;
-   #else
     return false;
-   #endif
 }
 
-double Env_genAudioProcessor::getTailLengthSeconds() const
+double EnvGenAudioProcessor::getTailLengthSeconds() const
 {
     return 0.0;
 }
 
-int Env_genAudioProcessor::getNumPrograms()
+int EnvGenAudioProcessor::getNumPrograms()
 {
-    return 1;   // NB: some hosts don't cope very well if you tell them there are 0 programs,
-                // so this should be at least 1, even if you're not really implementing programs.
+    return 1;
 }
 
-int Env_genAudioProcessor::getCurrentProgram()
+int EnvGenAudioProcessor::getCurrentProgram()
 {
     return 0;
 }
 
-void Env_genAudioProcessor::setCurrentProgram (int index)
+void EnvGenAudioProcessor::setCurrentProgram(int /*index*/)
 {
 }
 
-const juce::String Env_genAudioProcessor::getProgramName (int index)
+const juce::String EnvGenAudioProcessor::getProgramName(int /*index*/)
 {
     return {};
 }
 
-void Env_genAudioProcessor::changeProgramName (int index, const juce::String& newName)
+void EnvGenAudioProcessor::changeProgramName(int /*index*/, const juce::String& /*newName*/)
 {
 }
 
 //==============================================================================
-void Env_genAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
+void EnvGenAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
-    // Use this method as the place to do any pre-playback
-    // initialisation that you need..
+    // Prepare filter
+    filter.prepare(sampleRate, samplesPerBlock, 2);
+
+    // Prepare envelopes and sequencers
+    for (int i = 0; i < NUM_LANES; ++i)
+    {
+        envelopes[i].prepare(sampleRate);
+        sequencers[i].prepare(sampleRate);
+    }
+
+    // Initialize from parameters
+    updateFilterFromParams();
+    for (int i = 0; i < NUM_LANES; ++i)
+    {
+        updateLaneFromParams(i);
+    }
 }
 
-void Env_genAudioProcessor::releaseResources()
+void EnvGenAudioProcessor::releaseResources()
 {
-    // When playback stops, you can use this as an opportunity to free up any
-    // spare memory, etc.
 }
 
-#ifndef JucePlugin_PreferredChannelConfigurations
-bool Env_genAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+bool EnvGenAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
-  #if JucePlugin_IsMidiEffect
-    juce::ignoreUnused (layouts);
-    return true;
-  #else
-    // This is the place where you check if the layout is supported.
-    // In this template code we only support mono or stereo.
-    // Some plugin hosts, such as certain GarageBand versions, will only
-    // load plugins that support stereo bus layouts.
     if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono()
-     && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
+        && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
         return false;
 
-    // This checks if the input layout matches the output layout
-   #if ! JucePlugin_IsSynth
     if (layouts.getMainOutputChannelSet() != layouts.getMainInputChannelSet())
         return false;
-   #endif
 
     return true;
-  #endif
 }
-#endif
 
-void Env_genAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+void EnvGenAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& /*midiMessages*/)
 {
     juce::ScopedNoDenormals noDenormals;
-    auto totalNumInputChannels  = getTotalNumInputChannels();
+    auto totalNumInputChannels = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
 
-    // In case we have more outputs than inputs, this code clears any output
-    // channels that didn't contain input data, (because these aren't
-    // guaranteed to be empty - they may contain garbage).
-    // This is here to avoid people getting screaming feedback
-    // when they first compile a plugin, but obviously you don't need to keep
-    // this code if your algorithm always overwrites all the output channels.
+    // Clear unused output channels
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
-        buffer.clear (i, 0, buffer.getNumSamples());
+        buffer.clear(i, 0, buffer.getNumSamples());
 
-    // This is the place where you'd normally do the guts of your plugin's
-    // audio processing...
-    // Make sure to reset the state if your inner loop is processing
-    // the samples and the outer loop is handling the channels.
-    // Alternatively, you can process the samples with the channels
-    // interleaved by keeping the same state.
-    for (int channel = 0; channel < totalNumInputChannels; ++channel)
+    // Get playhead info
+    juce::AudioPlayHead::PositionInfo positionInfo;
+    if (auto* playHead = getPlayHead())
     {
-        auto* channelData = buffer.getWritePointer (channel);
+        auto pos = playHead->getPosition();
+        if (pos.hasValue())
+            positionInfo = *pos;
+    }
 
-        // ..do something to the data...
+    // Update parameters
+    updateFilterFromParams();
+    for (int lane = 0; lane < NUM_LANES; ++lane)
+    {
+        updateLaneFromParams(lane);
+    }
+
+    // Get base filter cutoff
+    float baseCutoff = filterCutoffParam->get();
+    float baseResonance = filterResonanceParam->get();
+    int filterModeIndex = filterModeParam->getIndex();
+    
+    filter.setMode(static_cast<Filter::Mode>(filterModeIndex));
+    filter.setResonance(baseResonance);
+
+    const int numSamples = buffer.getNumSamples();
+    const int numChannels = buffer.getNumChannels();
+
+    // Process sample by sample for accurate envelope/sequencer timing
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        // Process each lane's sequencer and trigger envelopes
+        for (int lane = 0; lane < NUM_LANES; ++lane)
+        {
+            if (sequencers[lane].process(positionInfo))
+            {
+                envelopes[lane].trigger();
+            }
+        }
+
+        // Calculate modulation amounts
+        float cutoffModulation = 0.0f;
+        float volumeModulation = 0.0f;
+
+        for (int lane = 0; lane < NUM_LANES; ++lane)
+        {
+            float envValue = envelopes[lane].process();
+            int destIndex = laneParams[lane].destination->getIndex();
+            
+            if (destIndex == 0) // Filter Cutoff
+            {
+                cutoffModulation += envValue;
+            }
+            else // Volume
+            {
+                volumeModulation += envValue;
+            }
+        }
+
+        // Apply cutoff modulation (exponential scaling for musical response)
+        // Modulation adds up to 4 octaves to the base cutoff
+        float modulatedCutoff = baseCutoff * std::pow(2.0f, cutoffModulation * 4.0f);
+        modulatedCutoff = juce::jlimit(20.0f, 20000.0f, modulatedCutoff);
+        filter.setCutoff(modulatedCutoff);
+
+        // Calculate volume gain (envelope adds to base gain of 1.0)
+        // When no envelope is active targeting volume, gain = 1.0
+        // Envelope can boost volume by up to 4x (12dB)
+        float volumeGain = 1.0f;
+        if (volumeModulation > 0.0f)
+        {
+            volumeGain = 1.0f + volumeModulation * 3.0f; // 1.0 to 4.0
+        }
+
+        // Process each channel
+        for (int channel = 0; channel < numChannels; ++channel)
+        {
+            float* channelData = buffer.getWritePointer(channel);
+            
+            // Apply filter
+            float filtered = filter.processSample(channelData[sample], channel);
+            
+            // Apply volume modulation
+            channelData[sample] = filtered * volumeGain;
+        }
     }
 }
 
 //==============================================================================
-bool Env_genAudioProcessor::hasEditor() const
+bool EnvGenAudioProcessor::hasEditor() const
 {
-    return true; // (change this to false if you choose to not supply an editor)
+    return true;
 }
 
-juce::AudioProcessorEditor* Env_genAudioProcessor::createEditor()
+juce::AudioProcessorEditor* EnvGenAudioProcessor::createEditor()
 {
-    return new Env_genAudioProcessorEditor (*this);
+    return new EnvGenAudioProcessorEditor(*this);
 }
 
 //==============================================================================
-void Env_genAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
+void EnvGenAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
-    // You should use this method to store your parameters in the memory block.
-    // You could do that either as raw data, or use the XML or ValueTree classes
-    // as intermediaries to make it easy to save and load complex data.
+    auto state = apvts.copyState();
+    std::unique_ptr<juce::XmlElement> xml(state.createXml());
+    copyXmlToBinary(*xml, destData);
 }
 
-void Env_genAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
+void EnvGenAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
-    // You should use this method to restore your parameters from this memory block,
-    // whose contents will have been created by the getStateInformation() call.
+    std::unique_ptr<juce::XmlElement> xmlState(getXmlFromBinary(data, sizeInBytes));
+
+    if (xmlState.get() != nullptr)
+    {
+        if (xmlState->hasTagName(apvts.state.getType()))
+        {
+            apvts.replaceState(juce::ValueTree::fromXml(*xmlState));
+        }
+    }
 }
 
+//==============================================================================
+int EnvGenAudioProcessor::getCurrentStep(int laneIndex) const
+{
+    if (laneIndex >= 0 && laneIndex < NUM_LANES)
+        return sequencers[laneIndex].getCurrentStep();
+    return 0;
+}
 
-juce::AudioProcessorValueTreeState::ParameterLayout
-Env_genAudioProcessor::createParameterLayout()
+//==============================================================================
+void EnvGenAudioProcessor::updateFilterFromParams()
+{
+    filter.setCutoff(filterCutoffParam->get());
+    filter.setResonance(filterResonanceParam->get());
+    filter.setMode(static_cast<Filter::Mode>(filterModeParam->getIndex()));
+}
+
+void EnvGenAudioProcessor::updateLaneFromParams(int laneIndex)
+{
+    if (laneIndex < 0 || laneIndex >= NUM_LANES)
+        return;
+
+    auto& params = laneParams[laneIndex];
+    auto& envelope = envelopes[laneIndex];
+    auto& sequencer = sequencers[laneIndex];
+
+    // Update envelope parameters
+    envelope.setAttack(params.attack->get());
+    envelope.setHold(params.hold->get());
+    envelope.setDecay(params.decay->get());
+
+    // Update sequencer steps
+    for (int step = 0; step < NUM_STEPS; ++step)
+    {
+        sequencer.setStep(step, params.steps[step]->get());
+    }
+
+    // Update sequencer rate
+    sequencer.setRate(static_cast<StepSequencer::Rate>(params.rate->getIndex()));
+}
+
+//==============================================================================
+juce::AudioProcessorValueTreeState::ParameterLayout EnvGenAudioProcessor::createParameterLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
+    // Global filter parameters
+    layout.add(std::make_unique<juce::AudioParameterChoice>(
+        ParameterID::filterMode, "Filter Mode",
+        juce::StringArray{ "Lowpass", "Highpass", "Bandpass" }, 0));
 
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        ParameterID::filterCutoff, "Filter Cutoff",
+        juce::NormalisableRange<float>(20.0f, 20000.0f, 0.1f, 0.3f), // Skewed for better control
+        1000.0f, "Hz"));
+
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        ParameterID::filterResonance, "Filter Resonance",
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f),
+        0.0f));
+
+    // Rate choices
+    juce::StringArray rateChoices{ "1/1", "1/2", "1/4", "1/8", "1/16", "1/32" };
+    juce::StringArray destChoices{ "Filter Cutoff", "Volume" };
+
+    // Lane parameters
+    auto addLaneParams = [&](const juce::String& prefix, int laneNum)
+    {
+        // Step buttons
+        for (int step = 0; step < NUM_STEPS; ++step)
+        {
+            juce::String stepId = prefix + "_step" + juce::String(step);
+            juce::String stepName = "Lane " + juce::String(laneNum) + " Step " + juce::String(step + 1);
+            layout.add(std::make_unique<juce::AudioParameterBool>(
+                juce::ParameterID(stepId, 1), stepName, false));
+        }
+
+        // Envelope parameters
+        layout.add(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID(prefix + "_attack", 1), "Lane " + juce::String(laneNum) + " Attack",
+            juce::NormalisableRange<float>(0.001f, 10.0f, 0.001f, 0.3f),
+            0.01f, "s"));
+
+        layout.add(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID(prefix + "_hold", 1), "Lane " + juce::String(laneNum) + " Hold",
+            juce::NormalisableRange<float>(0.0f, 10.0f, 0.001f, 0.3f),
+            0.1f, "s"));
+
+        layout.add(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID(prefix + "_decay", 1), "Lane " + juce::String(laneNum) + " Decay",
+            juce::NormalisableRange<float>(0.001f, 10.0f, 0.001f, 0.3f),
+            0.5f, "s"));
+
+        // Rate
+        layout.add(std::make_unique<juce::AudioParameterChoice>(
+            juce::ParameterID(prefix + "_rate", 1), "Lane " + juce::String(laneNum) + " Rate",
+            rateChoices, 4)); // Default to 1/16
+
+        // Destination
+        layout.add(std::make_unique<juce::AudioParameterChoice>(
+            juce::ParameterID(prefix + "_destination", 1), "Lane " + juce::String(laneNum) + " Destination",
+            destChoices, 0)); // Default to Filter Cutoff
+    };
+
+    addLaneParams("lane1", 1);
+    addLaneParams("lane2", 2);
+    addLaneParams("lane3", 3);
+    addLaneParams("lane4", 4);
 
     return layout;
 }
 
-
 //==============================================================================
-// This creates new instances of the plugin..
+// This creates new instances of the plugin
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new Env_genAudioProcessor();
+    return new EnvGenAudioProcessor();
 }

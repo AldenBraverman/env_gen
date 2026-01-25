@@ -1,11 +1,9 @@
 /*
   ==============================================================================
 
-    customLookAndFeel.h
-    Created: 9 May 2024 7:24:50pm
-    Author:  Alden
+    CustomLookAndFeel.h
+    Custom UI styling for the Envelope Generator plugin
 
-    https://docs.juce.com/master/tutorial_look_and_feel_customisation.html
   ==============================================================================
 */
 
@@ -13,29 +11,36 @@
 
 #include <JuceHeader.h>
 
-//==============================================================================
-/*
-*/
-class customLookAndFeel  : public juce::LookAndFeel_V4
+class CustomLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
-    customLookAndFeel();
-    ~customLookAndFeel() override;
+    CustomLookAndFeel();
+    ~CustomLookAndFeel() override = default;
 
-    // void drawButtonBackground(juce::Graphics& g, juce::Button& button, const juce::Colour& backgroundColor, bool isMouseOverButton, bool isButtonDown) override;
+    // Custom toggle button for step sequencer
+    void drawToggleButton(juce::Graphics& g, juce::ToggleButton& button,
+                          bool shouldDrawButtonAsHighlighted,
+                          bool shouldDrawButtonAsDown) override;
 
-    void drawToggleButton(juce::Graphics& g, juce::ToggleButton& toggleButton, bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown) override;
-    void drawTickBox(juce::Graphics& g, juce::Component& toggleButton, float x, float y, float w, float h, bool ticked, bool isEnabled, bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown) override;
-    // g = graphics conext
-    // button = Button Object
-    // backgroundColour = base background color that should be used
-    // is MouseOverButton = where mouse pointer is within the bounds of the button
-    // isButtonDown = Whether the mouse button is down
+    // Custom rotary slider
+    void drawRotarySlider(juce::Graphics& g, int x, int y, int width, int height,
+                          float sliderPos, float rotaryStartAngle, float rotaryEndAngle,
+                          juce::Slider& slider) override;
 
-    //void paint (juce::Graphics&) override;
-    //void resized() override;
+    // Custom combo box
+    void drawComboBox(juce::Graphics& g, int width, int height, bool isButtonDown,
+                      int buttonX, int buttonY, int buttonW, int buttonH,
+                      juce::ComboBox& box) override;
 
+    // Colors
+    static const juce::Colour backgroundColour;
+    static const juce::Colour panelColour;
+    static const juce::Colour accentColour;
+    static const juce::Colour stepActiveColour;
+    static const juce::Colour stepInactiveColour;
+    static const juce::Colour stepPlayingColour;
+    static const juce::Colour textColour;
 
 private:
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (customLookAndFeel)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(CustomLookAndFeel)
 };

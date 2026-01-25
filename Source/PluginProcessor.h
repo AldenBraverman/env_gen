@@ -1,7 +1,8 @@
 /*
   ==============================================================================
 
-    This file contains the basic framework code for a JUCE plugin processor.
+    PluginProcessor.h
+    Envelope Generator Audio Plugin
 
   ==============================================================================
 */
@@ -9,129 +10,82 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "DSP/Envelope.h"
+#include "DSP/Filter.h"
+#include "DSP/StepSequencer.h"
 
-
+//==============================================================================
+// Parameter IDs
 namespace ParameterID
 {
     #define PARAMETER_ID(str) const juce::ParameterID str(#str, 1);
 
-    // Lane One
-    PARAMETER_ID(lane_one_0b);
-    PARAMETER_ID(lane_one_1b);
-    PARAMETER_ID(lane_one_2b);
-    PARAMETER_ID(lane_one_3b);
-    PARAMETER_ID(lane_one_4b);
-    PARAMETER_ID(lane_one_5b);
-    PARAMETER_ID(lane_one_6b);
-    PARAMETER_ID(lane_one_7b);
-    PARAMETER_ID(lane_one_8b);
-    PARAMETER_ID(lane_one_9b);
-    PARAMETER_ID(lane_one_10b);
-    PARAMETER_ID(lane_one_11b);
-    PARAMETER_ID(lane_one_12b);
-    PARAMETER_ID(lane_one_13b);
-    PARAMETER_ID(lane_one_14b);
-    PARAMETER_ID(lane_one_15b);
+    // Global filter parameters
+    PARAMETER_ID(filterMode)
+    PARAMETER_ID(filterCutoff)
+    PARAMETER_ID(filterResonance)
 
-    PARAMETER_ID(lane_one_attack);
-    PARAMETER_ID(lane_one_hold);
-    PARAMETER_ID(lane_one_decay);
-    PARAMETER_ID(lane_one_rate);
+    // Lane parameters - using arrays would be cleaner but macros make it simpler
+    // Lane 1
+    PARAMETER_ID(lane1_step0)  PARAMETER_ID(lane1_step1)  PARAMETER_ID(lane1_step2)  PARAMETER_ID(lane1_step3)
+    PARAMETER_ID(lane1_step4)  PARAMETER_ID(lane1_step5)  PARAMETER_ID(lane1_step6)  PARAMETER_ID(lane1_step7)
+    PARAMETER_ID(lane1_step8)  PARAMETER_ID(lane1_step9)  PARAMETER_ID(lane1_step10) PARAMETER_ID(lane1_step11)
+    PARAMETER_ID(lane1_step12) PARAMETER_ID(lane1_step13) PARAMETER_ID(lane1_step14) PARAMETER_ID(lane1_step15)
+    PARAMETER_ID(lane1_attack) PARAMETER_ID(lane1_hold)   PARAMETER_ID(lane1_decay)  PARAMETER_ID(lane1_rate)
+    PARAMETER_ID(lane1_destination)
 
-    // Lane Two
-    PARAMETER_ID(lane_two_0b);
-    PARAMETER_ID(lane_two_1b);
-    PARAMETER_ID(lane_two_2b);
-    PARAMETER_ID(lane_two_3b);
-    PARAMETER_ID(lane_two_4b);
-    PARAMETER_ID(lane_two_5b);
-    PARAMETER_ID(lane_two_6b);
-    PARAMETER_ID(lane_two_7b);
-    PARAMETER_ID(lane_two_8b);
-    PARAMETER_ID(lane_two_9b);
-    PARAMETER_ID(lane_two_10b);
-    PARAMETER_ID(lane_two_11b);
-    PARAMETER_ID(lane_two_12b);
-    PARAMETER_ID(lane_two_13b);
-    PARAMETER_ID(lane_two_14b);
-    PARAMETER_ID(lane_two_15b);
+    // Lane 2
+    PARAMETER_ID(lane2_step0)  PARAMETER_ID(lane2_step1)  PARAMETER_ID(lane2_step2)  PARAMETER_ID(lane2_step3)
+    PARAMETER_ID(lane2_step4)  PARAMETER_ID(lane2_step5)  PARAMETER_ID(lane2_step6)  PARAMETER_ID(lane2_step7)
+    PARAMETER_ID(lane2_step8)  PARAMETER_ID(lane2_step9)  PARAMETER_ID(lane2_step10) PARAMETER_ID(lane2_step11)
+    PARAMETER_ID(lane2_step12) PARAMETER_ID(lane2_step13) PARAMETER_ID(lane2_step14) PARAMETER_ID(lane2_step15)
+    PARAMETER_ID(lane2_attack) PARAMETER_ID(lane2_hold)   PARAMETER_ID(lane2_decay)  PARAMETER_ID(lane2_rate)
+    PARAMETER_ID(lane2_destination)
 
-    PARAMETER_ID(lane_two_attack);
-    PARAMETER_ID(lane_two_hold);
-    PARAMETER_ID(lane_two_decay);
-    PARAMETER_ID(lane_two_rate);
+    // Lane 3
+    PARAMETER_ID(lane3_step0)  PARAMETER_ID(lane3_step1)  PARAMETER_ID(lane3_step2)  PARAMETER_ID(lane3_step3)
+    PARAMETER_ID(lane3_step4)  PARAMETER_ID(lane3_step5)  PARAMETER_ID(lane3_step6)  PARAMETER_ID(lane3_step7)
+    PARAMETER_ID(lane3_step8)  PARAMETER_ID(lane3_step9)  PARAMETER_ID(lane3_step10) PARAMETER_ID(lane3_step11)
+    PARAMETER_ID(lane3_step12) PARAMETER_ID(lane3_step13) PARAMETER_ID(lane3_step14) PARAMETER_ID(lane3_step15)
+    PARAMETER_ID(lane3_attack) PARAMETER_ID(lane3_hold)   PARAMETER_ID(lane3_decay)  PARAMETER_ID(lane3_rate)
+    PARAMETER_ID(lane3_destination)
 
-    // Lane Three
-    PARAMETER_ID(lane_three_0b);
-    PARAMETER_ID(lane_three_1b);
-    PARAMETER_ID(lane_three_2b);
-    PARAMETER_ID(lane_three_3b);
-    PARAMETER_ID(lane_three_4b);
-    PARAMETER_ID(lane_three_5b);
-    PARAMETER_ID(lane_three_6b);
-    PARAMETER_ID(lane_three_7b);
-    PARAMETER_ID(lane_three_8b);
-    PARAMETER_ID(lane_three_9b);
-    PARAMETER_ID(lane_three_10b);
-    PARAMETER_ID(lane_three_11b);
-    PARAMETER_ID(lane_three_12b);
-    PARAMETER_ID(lane_three_13b);
-    PARAMETER_ID(lane_three_14b);
-    PARAMETER_ID(lane_three_15b);
+    // Lane 4
+    PARAMETER_ID(lane4_step0)  PARAMETER_ID(lane4_step1)  PARAMETER_ID(lane4_step2)  PARAMETER_ID(lane4_step3)
+    PARAMETER_ID(lane4_step4)  PARAMETER_ID(lane4_step5)  PARAMETER_ID(lane4_step6)  PARAMETER_ID(lane4_step7)
+    PARAMETER_ID(lane4_step8)  PARAMETER_ID(lane4_step9)  PARAMETER_ID(lane4_step10) PARAMETER_ID(lane4_step11)
+    PARAMETER_ID(lane4_step12) PARAMETER_ID(lane4_step13) PARAMETER_ID(lane4_step14) PARAMETER_ID(lane4_step15)
+    PARAMETER_ID(lane4_attack) PARAMETER_ID(lane4_hold)   PARAMETER_ID(lane4_decay)  PARAMETER_ID(lane4_rate)
+    PARAMETER_ID(lane4_destination)
 
-    PARAMETER_ID(lane_three_attack);
-    PARAMETER_ID(lane_three_hold);
-    PARAMETER_ID(lane_three_decay);
-    PARAMETER_ID(lane_three_rate);
-
-    // Lane Four
-    PARAMETER_ID(lane_four_0b);
-    PARAMETER_ID(lane_four_1b);
-    PARAMETER_ID(lane_four_2b);
-    PARAMETER_ID(lane_four_3b);
-    PARAMETER_ID(lane_four_4b);
-    PARAMETER_ID(lane_four_5b);
-    PARAMETER_ID(lane_four_6b);
-    PARAMETER_ID(lane_four_7b);
-    PARAMETER_ID(lane_four_8b);
-    PARAMETER_ID(lane_four_9b);
-    PARAMETER_ID(lane_four_10b);
-    PARAMETER_ID(lane_four_11b);
-    PARAMETER_ID(lane_four_12b);
-    PARAMETER_ID(lane_four_13b);
-    PARAMETER_ID(lane_four_14b);
-    PARAMETER_ID(lane_four_15b);
-
-    PARAMETER_ID(lane_four_attack);
-    PARAMETER_ID(lane_four_hold);
-    PARAMETER_ID(lane_four_decay);
-    PARAMETER_ID(lane_four_rate);
-
-
+    #undef PARAMETER_ID
 }
 
-
-
 //==============================================================================
-/**
-*/
-class Env_genAudioProcessor  : public juce::AudioProcessor,
-    private juce::ValueTree::Listener
+class EnvGenAudioProcessor : public juce::AudioProcessor
 {
 public:
     //==============================================================================
-    Env_genAudioProcessor();
-    ~Env_genAudioProcessor() override;
+    static constexpr int NUM_LANES = 4;
+    static constexpr int NUM_STEPS = 16;
+
+    enum class Destination
+    {
+        FilterCutoff,
+        Volume
+    };
 
     //==============================================================================
-    void prepareToPlay (double sampleRate, int samplesPerBlock) override;
+    EnvGenAudioProcessor();
+    ~EnvGenAudioProcessor() override;
+
+    //==============================================================================
+    void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
 
-   #ifndef JucePlugin_PreferredChannelConfigurations
-    bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
-   #endif
+    bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
 
-    void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
     //==============================================================================
     juce::AudioProcessorEditor* createEditor() override;
@@ -148,92 +102,54 @@ public:
     //==============================================================================
     int getNumPrograms() override;
     int getCurrentProgram() override;
-    void setCurrentProgram (int index) override;
-    const juce::String getProgramName (int index) override;
-    void changeProgramName (int index, const juce::String& newName) override;
+    void setCurrentProgram(int index) override;
+    const juce::String getProgramName(int index) override;
+    void changeProgramName(int index, const juce::String& newName) override;
 
     //==============================================================================
-    void getStateInformation (juce::MemoryBlock& destData) override;
-    void setStateInformation (const void* data, int sizeInBytes) override;
+    void getStateInformation(juce::MemoryBlock& destData) override;
+    void setStateInformation(const void* data, int sizeInBytes) override;
 
+    //==============================================================================
     juce::AudioProcessorValueTreeState apvts{ *this, nullptr, "Parameters", createParameterLayout() };
 
-private:
+    // Get current step for UI visualization
+    int getCurrentStep(int laneIndex) const;
 
+private:
+    //==============================================================================
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
-    // Lane One
-    juce::AudioParameterBool* lane_one_0b_param;
-    juce::AudioParameterBool* lane_one_1b_param;
-    juce::AudioParameterBool* lane_one_2b_param;
-    juce::AudioParameterBool* lane_one_3b_param;
-    juce::AudioParameterBool* lane_one_4b_param;
-    juce::AudioParameterBool* lane_one_5b_param;
-    juce::AudioParameterBool* lane_one_6b_param;
-    juce::AudioParameterBool* lane_one_7b_param;
-    juce::AudioParameterBool* lane_one_8b_param;
-    juce::AudioParameterBool* lane_one_9b_param;
-    juce::AudioParameterBool* lane_one_10b_param;
-    juce::AudioParameterBool* lane_one_11b_param;
-    juce::AudioParameterBool* lane_one_12b_param;
-    juce::AudioParameterBool* lane_one_13b_param;
-    juce::AudioParameterBool* lane_one_14b_param;
-    juce::AudioParameterBool* lane_one_15b_param;
+    // DSP components
+    Filter filter;
+    Envelope envelopes[NUM_LANES];
+    StepSequencer sequencers[NUM_LANES];
 
-    // Lane Two
-    juce::AudioParameterBool* lane_two_0b_param;
-    juce::AudioParameterBool* lane_two_1b_param;
-    juce::AudioParameterBool* lane_two_2b_param;
-    juce::AudioParameterBool* lane_two_3b_param;
-    juce::AudioParameterBool* lane_two_4b_param;
-    juce::AudioParameterBool* lane_two_5b_param;
-    juce::AudioParameterBool* lane_two_6b_param;
-    juce::AudioParameterBool* lane_two_7b_param;
-    juce::AudioParameterBool* lane_two_8b_param;
-    juce::AudioParameterBool* lane_two_9b_param;
-    juce::AudioParameterBool* lane_two_10b_param;
-    juce::AudioParameterBool* lane_two_11b_param;
-    juce::AudioParameterBool* lane_two_12b_param;
-    juce::AudioParameterBool* lane_two_13b_param;
-    juce::AudioParameterBool* lane_two_14b_param;
-    juce::AudioParameterBool* lane_two_15b_param;
+    // Parameter pointers for fast access
+    // Global
+    juce::AudioParameterChoice* filterModeParam = nullptr;
+    juce::AudioParameterFloat* filterCutoffParam = nullptr;
+    juce::AudioParameterFloat* filterResonanceParam = nullptr;
 
-    // Lane Three
-    juce::AudioParameterBool* lane_three_0b_param;
-    juce::AudioParameterBool* lane_three_1b_param;
-    juce::AudioParameterBool* lane_three_2b_param;
-    juce::AudioParameterBool* lane_three_3b_param;
-    juce::AudioParameterBool* lane_three_4b_param;
-    juce::AudioParameterBool* lane_three_5b_param;
-    juce::AudioParameterBool* lane_three_6b_param;
-    juce::AudioParameterBool* lane_three_7b_param;
-    juce::AudioParameterBool* lane_three_8b_param;
-    juce::AudioParameterBool* lane_three_9b_param;
-    juce::AudioParameterBool* lane_three_10b_param;
-    juce::AudioParameterBool* lane_three_11b_param;
-    juce::AudioParameterBool* lane_three_12b_param;
-    juce::AudioParameterBool* lane_three_13b_param;
-    juce::AudioParameterBool* lane_three_14b_param;
-    juce::AudioParameterBool* lane_three_15b_param;
+    // Per-lane parameters
+    struct LaneParams
+    {
+        juce::AudioParameterBool* steps[NUM_STEPS] = { nullptr };
+        juce::AudioParameterFloat* attack = nullptr;
+        juce::AudioParameterFloat* hold = nullptr;
+        juce::AudioParameterFloat* decay = nullptr;
+        juce::AudioParameterChoice* rate = nullptr;
+        juce::AudioParameterChoice* destination = nullptr;
+    };
+    LaneParams laneParams[NUM_LANES];
 
-    // Lane Four
-    juce::AudioParameterBool* lane_four_0b_param;
-    juce::AudioParameterBool* lane_four_1b_param;
-    juce::AudioParameterBool* lane_four_2b_param;
-    juce::AudioParameterBool* lane_four_3b_param;
-    juce::AudioParameterBool* lane_four_4b_param;
-    juce::AudioParameterBool* lane_four_5b_param;
-    juce::AudioParameterBool* lane_four_6b_param;
-    juce::AudioParameterBool* lane_four_7b_param;
-    juce::AudioParameterBool* lane_four_8b_param;
-    juce::AudioParameterBool* lane_four_9b_param;
-    juce::AudioParameterBool* lane_four_10b_param;
-    juce::AudioParameterBool* lane_four_11b_param;
-    juce::AudioParameterBool* lane_four_12b_param;
-    juce::AudioParameterBool* lane_four_13b_param;
-    juce::AudioParameterBool* lane_four_14b_param;
-    juce::AudioParameterBool* lane_four_15b_param;
+    // Helper to get step parameter IDs
+    static juce::ParameterID getStepParamID(int laneIndex, int stepIndex);
+
+    // Update DSP from parameters
+    void updateFilterFromParams();
+    void updateLaneFromParams(int laneIndex);
 
     //==============================================================================
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Env_genAudioProcessor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EnvGenAudioProcessor)
 };

@@ -1,7 +1,8 @@
 /*
   ==============================================================================
 
-    This file contains the basic framework code for a JUCE plugin editor.
+    PluginEditor.h
+    Envelope Generator Plugin Editor
 
   ==============================================================================
 */
@@ -10,29 +11,45 @@
 
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
-#include "Components/customLookAndFeel.h"
+#include "Components/CustomLookAndFeel.h"
+#include "Components/EnvelopeLane.h"
 
 //==============================================================================
-/**
-*/
-class Env_genAudioProcessorEditor  : public juce::AudioProcessorEditor
+class EnvGenAudioProcessorEditor : public juce::AudioProcessorEditor,
+                                    public juce::Timer
 {
 public:
-    Env_genAudioProcessorEditor (Env_genAudioProcessor&);
-    ~Env_genAudioProcessorEditor() override;
+    EnvGenAudioProcessorEditor(EnvGenAudioProcessor&);
+    ~EnvGenAudioProcessorEditor() override;
 
     //==============================================================================
-    void paint (juce::Graphics&) override;
+    void paint(juce::Graphics&) override;
     void resized() override;
+    void timerCallback() override;
 
 private:
-    // This reference is provided as a quick way for your editor to
-    // access the processor object that created it.
-    Env_genAudioProcessor& audioProcessor;
+    EnvGenAudioProcessor& audioProcessor;
+    CustomLookAndFeel customLookAndFeel;
 
-    customLookAndFeel otherLookAndFeel;
-    juce::ToggleButton lane_one_0b;
-    juce::TextButton lane_one_1b;
+    // Header section
+    juce::Label titleLabel;
+    
+    // Filter controls
+    juce::Label filterLabel;
+    juce::Label filterModeLabel;
+    juce::Label filterCutoffLabel;
+    juce::Label filterResonanceLabel;
+    
+    juce::ComboBox filterModeCombo;
+    juce::Slider filterCutoffSlider;
+    juce::Slider filterResonanceSlider;
+    
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> filterModeAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> filterCutoffAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> filterResonanceAttachment;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Env_genAudioProcessorEditor)
+    // Envelope lanes
+    std::unique_ptr<EnvelopeLane> lanes[EnvGenAudioProcessor::NUM_LANES];
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EnvGenAudioProcessorEditor)
 };
