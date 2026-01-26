@@ -38,6 +38,7 @@ private:
     juce::Label attackLabel;
     juce::Label holdLabel;
     juce::Label decayLabel;
+    juce::Label amountLabel;
     juce::Label rateLabel;
     juce::Label destLabel;
 
@@ -49,9 +50,11 @@ private:
     juce::Slider attackSlider;
     juce::Slider holdSlider;
     juce::Slider decaySlider;
+    juce::Slider amountSlider;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attackAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> holdAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> decayAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> amountAttachment;
 
     // Rate selector
     juce::ComboBox rateCombo;

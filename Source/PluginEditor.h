@@ -13,6 +13,7 @@
 #include "PluginProcessor.h"
 #include "Components/CustomLookAndFeel.h"
 #include "Components/EnvelopeLane.h"
+#include "Components/OscilloscopeComponent.h"
 
 //==============================================================================
 class EnvGenAudioProcessorEditor : public juce::AudioProcessorEditor,
@@ -34,6 +35,14 @@ private:
     // Header section
     juce::Label titleLabel;
     
+    // Gain controls
+    juce::Label inputGainLabel;
+    juce::Label outputGainLabel;
+    juce::Slider inputGainSlider;
+    juce::Slider outputGainSlider;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> inputGainAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> outputGainAttachment;
+
     // Filter controls
     juce::Label filterLabel;
     juce::Label filterModeLabel;
@@ -47,6 +56,9 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> filterModeAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> filterCutoffAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> filterResonanceAttachment;
+
+    // Oscilloscope display
+    std::unique_ptr<OsciloscopeComponent> oscilloscope;
 
     // Envelope lanes
     std::unique_ptr<EnvelopeLane> lanes[EnvGenAudioProcessor::NUM_LANES];

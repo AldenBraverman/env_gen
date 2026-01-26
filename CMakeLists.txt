@@ -32,6 +32,9 @@ juce_add_plugin(EnvGen
     PRODUCT_NAME "Envelope Generator"
 )
 
+# Generate JuceHeader.h for legacy include style
+juce_generate_juce_header(EnvGen)
+
 # Source files
 target_sources(EnvGen
     PRIVATE
@@ -51,6 +54,8 @@ target_sources(EnvGen
         Source/Components/StepButton.h
         Source/Components/EnvelopeLane.cpp
         Source/Components/EnvelopeLane.h
+        Source/Components/OscilloscopeComponent.cpp
+        Source/Components/OscilloscopeComponent.h
 )
 
 # Set include directories

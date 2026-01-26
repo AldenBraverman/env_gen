@@ -33,6 +33,7 @@ EnvelopeLane::EnvelopeLane(juce::AudioProcessorValueTreeState& apvts, int laneNu
     setupSlider(attackSlider, attackLabel, "A");
     setupSlider(holdSlider, holdLabel, "H");
     setupSlider(decaySlider, decayLabel, "D");
+    setupSlider(amountSlider, amountLabel, "Amt");
 
     attackAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         apvts, prefix + "_attack", attackSlider);
@@ -40,6 +41,8 @@ EnvelopeLane::EnvelopeLane(juce::AudioProcessorValueTreeState& apvts, int laneNu
         apvts, prefix + "_hold", holdSlider);
     decayAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         apvts, prefix + "_decay", decaySlider);
+    amountAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        apvts, prefix + "_amount", amountSlider);
 
     // Setup rate combo
     setupComboBox(rateCombo, rateLabel, "Rate");
@@ -110,6 +113,12 @@ void EnvelopeLane::resized()
     knobArea = bounds.removeFromLeft(knobSize);
     decayLabel.setBounds(knobArea.removeFromTop(16));
     decaySlider.setBounds(knobArea.removeFromTop(knobSize - 16));
+    bounds.removeFromLeft(spacing);
+
+    // Amount knob
+    knobArea = bounds.removeFromLeft(knobSize);
+    amountLabel.setBounds(knobArea.removeFromTop(16));
+    amountSlider.setBounds(knobArea.removeFromTop(knobSize - 16));
     bounds.removeFromLeft(spacing);
 
     // Rate combo

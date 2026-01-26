@@ -9,6 +9,7 @@
 
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "Components/OscilloscopeComponent.h"
 
 //==============================================================================
 EnvGenAudioProcessor::EnvGenAudioProcessor()
@@ -17,6 +18,8 @@ EnvGenAudioProcessor::EnvGenAudioProcessor()
                      .withOutput("Output", juce::AudioChannelSet::stereo(), true))
 {
     // Get global parameter pointers
+    inputGainParam = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter("inputGain"));
+    outputGainParam = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter("outputGain"));
     filterModeParam = dynamic_cast<juce::AudioParameterChoice*>(apvts.getParameter("filterMode"));
     filterCutoffParam = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter("filterCutoff"));
     filterResonanceParam = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter("filterResonance"));
@@ -37,6 +40,7 @@ EnvGenAudioProcessor::EnvGenAudioProcessor()
         laneParams[lane].attack = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter(prefix + "_attack"));
         laneParams[lane].hold = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter(prefix + "_hold"));
         laneParams[lane].decay = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter(prefix + "_decay"));
+        laneParams[lane].amount = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter(prefix + "_amount"));
         laneParams[lane].rate = dynamic_cast<juce::AudioParameterChoice*>(apvts.getParameter(prefix + "_rate"));
         laneParams[lane].destination = dynamic_cast<juce::AudioParameterChoice*>(apvts.getParameter(prefix + "_destination"));
     }
@@ -114,6 +118,10 @@ void EnvGenAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     {
         updateLaneFromParams(i);
     }
+
+    // Allocate temporary buffers for oscilloscope data
+    monoBuffer.resize(static_cast<size_t>(samplesPerBlock));
+    envelopeBuffer.resize(static_cast<size_t>(samplesPerBlock));
 }
 
 void EnvGenAudioProcessor::releaseResources()
@@ -141,6 +149,10 @@ void EnvGenAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     // Clear unused output channels
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear(i, 0, buffer.getNumSamples());
+
+    // Apply input gain
+    float inputGainLinear = juce::Decibels::decibelsToGain(inputGainParam->get());
+    buffer.applyGain(inputGainLinear);
 
     // Get playhead info
     juce::AudioPlayHead::PositionInfo positionInfo;
@@ -188,15 +200,18 @@ void EnvGenAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
         for (int lane = 0; lane < NUM_LANES; ++lane)
         {
             float envValue = envelopes[lane].process();
+            float amount = laneParams[lane].amount->get();  // -1.0 to 1.0
+            float modulatedEnvValue = envValue * amount;
+            
             int destIndex = laneParams[lane].destination->getIndex();
             
             if (destIndex == 0) // Filter Cutoff
             {
-                cutoffModulation += envValue;
+                cutoffModulation += modulatedEnvValue;
             }
             else // Volume
             {
-                volumeModulation += envValue;
+                volumeModulation += modulatedEnvValue;
             }
         }
 
@@ -214,6 +229,12 @@ void EnvGenAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
         {
             volumeGain = 1.0f + volumeModulation * 3.0f; // 1.0 to 4.0
         }
+        else if (volumeModulation < 0.0f)
+        {
+            // Negative amount reduces volume (inverted envelope)
+            volumeGain = 1.0f + volumeModulation; // Can go down to 0.0
+            volumeGain = juce::jmax(0.0f, volumeGain);
+        }
 
         // Process each channel
         for (int channel = 0; channel < numChannels; ++channel)
@@ -226,6 +247,59 @@ void EnvGenAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
             // Apply volume modulation
             channelData[sample] = filtered * volumeGain;
         }
+    }
+
+    // Apply output gain
+    float outputGainLinear = juce::Decibels::decibelsToGain(outputGainParam->get());
+    buffer.applyGain(outputGainLinear);
+
+    // Push data to oscilloscope if connected
+    if (oscilloscope != nullptr)
+    {
+        // Convert PositionInfo to CurrentPositionInfo for oscilloscope
+        juce::AudioPlayHead::CurrentPositionInfo currentPosInfo;
+        currentPosInfo.resetToDefault();
+        
+        auto bpmOpt = positionInfo.getBpm();
+        auto ppqOpt = positionInfo.getPpqPosition();
+        auto timeSigOpt = positionInfo.getTimeSignature();
+        
+        currentPosInfo.bpm = bpmOpt.hasValue() ? *bpmOpt : 120.0;
+        currentPosInfo.ppqPosition = ppqOpt.hasValue() ? *ppqOpt : 0.0;
+        currentPosInfo.isPlaying = positionInfo.getIsPlaying();
+        
+        if (timeSigOpt.hasValue())
+        {
+            currentPosInfo.timeSigNumerator = timeSigOpt->numerator;
+            currentPosInfo.timeSigDenominator = timeSigOpt->denominator;
+        }
+        
+        // Update playhead info first (handles measure boundary detection)
+        oscilloscope->updatePlayheadInfo(currentPosInfo);
+        
+        // Prepare mono mix buffer
+        for (int sample = 0; sample < numSamples; ++sample)
+        {
+            float monoSample = 0.0f;
+            for (int channel = 0; channel < numChannels; ++channel)
+            {
+                monoSample += buffer.getSample(channel, sample);
+            }
+            monoSample /= static_cast<float>(numChannels);
+            monoBuffer[static_cast<size_t>(sample)] = juce::jlimit(-1.0f, 1.0f, monoSample);
+            
+            // Sum of all envelope values
+            float envelopeSum = 0.0f;
+            for (int lane = 0; lane < NUM_LANES; ++lane)
+            {
+                envelopeSum += envelopes[lane].getCurrentValue();
+            }
+            envelopeBuffer[static_cast<size_t>(sample)] = juce::jlimit(0.0f, 4.0f, envelopeSum);
+        }
+        
+        // Push to oscilloscope
+        oscilloscope->pushBuffer(monoBuffer.data(), numSamples);
+        oscilloscope->pushEnvelopeBuffer(envelopeBuffer.data(), numSamples);
     }
 }
 
@@ -306,18 +380,29 @@ juce::AudioProcessorValueTreeState::ParameterLayout EnvGenAudioProcessor::create
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
+    // Global gain parameters
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        ::ParameterID::inputGain, "Input Gain",
+        juce::NormalisableRange<float>(-24.0f, 24.0f, 0.1f),
+        0.0f, "dB"));
+
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        ::ParameterID::outputGain, "Output Gain",
+        juce::NormalisableRange<float>(-24.0f, 24.0f, 0.1f),
+        0.0f, "dB"));
+
     // Global filter parameters
     layout.add(std::make_unique<juce::AudioParameterChoice>(
-        ParameterID::filterMode, "Filter Mode",
+        ::ParameterID::filterMode, "Filter Mode",
         juce::StringArray{ "Lowpass", "Highpass", "Bandpass" }, 0));
 
     layout.add(std::make_unique<juce::AudioParameterFloat>(
-        ParameterID::filterCutoff, "Filter Cutoff",
+        ::ParameterID::filterCutoff, "Filter Cutoff",
         juce::NormalisableRange<float>(20.0f, 20000.0f, 0.1f, 0.3f), // Skewed for better control
         1000.0f, "Hz"));
 
     layout.add(std::make_unique<juce::AudioParameterFloat>(
-        ParameterID::filterResonance, "Filter Resonance",
+        ::ParameterID::filterResonance, "Filter Resonance",
         juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f),
         0.0f));
 
@@ -362,6 +447,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout EnvGenAudioProcessor::create
         layout.add(std::make_unique<juce::AudioParameterChoice>(
             juce::ParameterID(prefix + "_destination", 1), "Lane " + juce::String(laneNum) + " Destination",
             destChoices, 0)); // Default to Filter Cutoff
+
+        // Amount (bipolar: -100% to +100%)
+        layout.add(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID(prefix + "_amount", 1), "Lane " + juce::String(laneNum) + " Amount",
+            juce::NormalisableRange<float>(-1.0f, 1.0f, 0.01f),
+            1.0f)); // Default to 100%
     };
 
     addLaneParams("lane1", 1);
