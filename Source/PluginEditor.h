@@ -40,8 +40,10 @@ private:
     juce::Label outputGainLabel;
     juce::Slider inputGainSlider;
     juce::Slider outputGainSlider;
+    juce::ToggleButton dryPassButton;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> inputGainAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> outputGainAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> dryPassAttachment;
 
     // Filter controls
     juce::Label filterLabel;

@@ -20,6 +20,7 @@ EnvGenAudioProcessor::EnvGenAudioProcessor()
     // Get global parameter pointers
     inputGainParam = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter("inputGain"));
     outputGainParam = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter("outputGain"));
+    dryPassParam = dynamic_cast<juce::AudioParameterBool*>(apvts.getParameter("dryPass"));
     filterModeParam = dynamic_cast<juce::AudioParameterChoice*>(apvts.getParameter("filterMode"));
     filterCutoffParam = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter("filterCutoff"));
     filterResonanceParam = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter("filterResonance"));
@@ -221,20 +222,17 @@ void EnvGenAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
         modulatedCutoff = juce::jlimit(20.0f, 20000.0f, modulatedCutoff);
         filter.setCutoff(modulatedCutoff);
 
-        // Calculate volume gain (envelope adds to base gain of 1.0)
-        // When no envelope is active targeting volume, gain = 1.0
-        // Envelope can boost volume by up to 4x (12dB)
-        float volumeGain = 1.0f;
+        // Volume gain: Dry OFF = silence until envelope; Dry ON = dry at unity, envelope adds on top
+        bool dryPass = dryPassParam->get();
+        float baseGain = dryPass ? 1.0f : 0.0f;
+        float volumeGain;
         if (volumeModulation > 0.0f)
-        {
-            volumeGain = 1.0f + volumeModulation * 3.0f; // 1.0 to 4.0
-        }
+            volumeGain = baseGain + volumeModulation * 3.0f;  // envelope adds on top
         else if (volumeModulation < 0.0f)
-        {
-            // Negative amount reduces volume (inverted envelope)
-            volumeGain = 1.0f + volumeModulation; // Can go down to 0.0
-            volumeGain = juce::jmax(0.0f, volumeGain);
-        }
+            volumeGain = baseGain + volumeModulation;          // can pull down from base
+        else
+            volumeGain = baseGain;                             // no envelope: 0 or 1
+        volumeGain = juce::jmax(0.0f, volumeGain);
 
         // Process each channel
         for (int channel = 0; channel < numChannels; ++channel)
@@ -390,6 +388,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout EnvGenAudioProcessor::create
         ::ParameterID::outputGain, "Output Gain",
         juce::NormalisableRange<float>(-24.0f, 24.0f, 0.1f),
         0.0f, "dB"));
+
+    layout.add(std::make_unique<juce::AudioParameterBool>(
+        ::ParameterID::dryPass, "Dry", false));  // OFF = silence until envelope; ON = dry passes, envelope adds
 
     // Global filter parameters
     layout.add(std::make_unique<juce::AudioParameterChoice>(

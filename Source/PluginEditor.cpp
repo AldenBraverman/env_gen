@@ -51,6 +51,14 @@ EnvGenAudioProcessorEditor::EnvGenAudioProcessorEditor(EnvGenAudioProcessor& p)
     outputGainAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         audioProcessor.apvts, "outputGain", outputGainSlider);
 
+    // Dry pass toggle (ON = dry at unity, envelope adds; OFF = silence until envelope)
+    dryPassButton.setButtonText("Dry");
+    dryPassButton.setColour(juce::ToggleButton::tickColourId, CustomLookAndFeel::accentColour);
+    dryPassButton.setColour(juce::ToggleButton::tickDisabledColourId, CustomLookAndFeel::textColour.withAlpha(0.5f));
+    addAndMakeVisible(dryPassButton);
+    dryPassAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+        audioProcessor.apvts, "dryPass", dryPassButton);
+
     // Filter section label
     filterLabel.setText("FILTER", juce::dontSendNotification);
     filterLabel.setFont(juce::Font(14.0f, juce::Font::bold));
@@ -198,6 +206,11 @@ void EnvGenAudioProcessorEditor::resized()
     auto outputGainArea = filterSection.removeFromLeft(70);
     outputGainLabel.setBounds(outputGainArea.removeFromTop(16));
     outputGainSlider.setBounds(outputGainArea);
+    filterSection.removeFromLeft(margin);
+
+    // Dry pass button
+    auto dryPassArea = filterSection.removeFromLeft(50);
+    dryPassButton.setBounds(dryPassArea.reduced(0, 18));
 
     bounds.removeFromTop(margin);
 

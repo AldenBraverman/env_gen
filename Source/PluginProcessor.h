@@ -26,6 +26,7 @@ namespace ParameterID
     // Global parameters
     PARAMETER_ID(inputGain)
     PARAMETER_ID(outputGain)
+    PARAMETER_ID(dryPass)
     PARAMETER_ID(filterMode)
     PARAMETER_ID(filterCutoff)
     PARAMETER_ID(filterResonance)
@@ -137,6 +138,7 @@ private:
     // Global
     juce::AudioParameterFloat* inputGainParam = nullptr;
     juce::AudioParameterFloat* outputGainParam = nullptr;
+    juce::AudioParameterBool* dryPassParam = nullptr;
     juce::AudioParameterChoice* filterModeParam = nullptr;
     juce::AudioParameterFloat* filterCutoffParam = nullptr;
     juce::AudioParameterFloat* filterResonanceParam = nullptr;
