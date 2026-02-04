@@ -45,25 +45,11 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> outputGainAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> dryPassAttachment;
 
-    // Filter controls
-    juce::Label filterLabel;
-    juce::Label filterModeLabel;
-    juce::Label filterCutoffLabel;
-    juce::Label filterResonanceLabel;
-    
-    juce::ComboBox filterModeCombo;
-    juce::Slider filterCutoffSlider;
-    juce::Slider filterResonanceSlider;
-    
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> filterModeAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> filterCutoffAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> filterResonanceAttachment;
-
     // Oscilloscope display
     std::unique_ptr<OsciloscopeComponent> oscilloscope;
 
-    // Envelope lanes
-    std::unique_ptr<EnvelopeLane> lanes[EnvGenAudioProcessor::NUM_LANES];
+    // Single envelope lane
+    std::unique_ptr<EnvelopeLane> envelopeLane;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EnvGenAudioProcessorEditor)
 };

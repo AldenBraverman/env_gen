@@ -17,15 +17,27 @@ A JUCE audio plugin with a 4-lane step sequencer that triggers AHD (Attack-Hold-
 
 - CMake 3.22 or higher
 - C++17 compatible compiler
-- Git (for FetchContent to download JUCE)
+- Git (for the JUCE submodule)
 
 ### Build Steps
 
-```bash
-# Clone the repository
-git clone <repo-url>
-cd env_gen
+**First-time clone** (JUCE is included as a git submodule):
 
+```bash
+# Clone the repository and init the JUCE submodule
+git clone --recursive <repo-url>
+cd env_gen
+```
+
+If you already cloned without `--recursive`, run:
+
+```bash
+git submodule update --init --recursive
+```
+
+Then build:
+
+```bash
 # Create build directory
 mkdir build
 cd build
@@ -36,6 +48,8 @@ cmake ..
 # Build
 cmake --build . --config Release
 ```
+
+**After pulling:** if the submodule pointer changed, run `git submodule update --init --recursive` before configuring/building.
 
 ### Windows (Visual Studio)
 
@@ -78,6 +92,7 @@ The plugin builds as:
 ```
 env_gen/
 ├── CMakeLists.txt              # CMake build configuration
+├── JUCE/                       # JUCE framework (git submodule)
 ├── Source/
 │   ├── PluginProcessor.h/cpp   # Audio processing and parameters
 │   ├── PluginEditor.h/cpp      # Main UI

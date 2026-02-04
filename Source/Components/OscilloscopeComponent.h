@@ -1,9 +1,11 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "../ScopeDataSink.h"
 
 class OsciloscopeComponent : public juce::Component,
-                           public juce::Timer
+                              public juce::Timer,
+                              public ScopeDataSink
 {
 public:
     OsciloscopeComponent();
@@ -16,14 +18,10 @@ public:
     // Timer callback for display updates
     void timerCallback() override;
     
-    // Call this from your audio processing to add samples
-    void pushBuffer(const float* samples, int numSamples);
-    
-    // Call this from your audio processing to add envelope values
-    void pushEnvelopeBuffer(const float* samples, int numSamples);
-    
-    // Update playhead info for measure sync
-    void updatePlayheadInfo(const juce::AudioPlayHead::CurrentPositionInfo& info);
+    // ScopeDataSink interface
+    void pushBuffer(const float* samples, int numSamples) override;
+    void pushEnvelopeBuffer(const float* samples, int numSamples) override;
+    void updatePlayheadInfo(const juce::AudioPlayHead::CurrentPositionInfo& info) override;
     
     // Configuration
     void setRefreshRate(int hz) { startTimerHz(hz); }

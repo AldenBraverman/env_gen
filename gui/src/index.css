@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 6% 10%;
+    --foreground: 240 5% 92%;
+    --muted: 240 4% 65%;
+    --accent: 24 95% 53%;
+    --border: 240 4% 23%;
+    --primary: 24 95% 53%;
+    --ring: 24 95% 53%;
+    --surface: 240 4% 16%;
+    --card: 240 4% 16%;
+    --popover: 240 4% 16%;
+    --popover-foreground: 240 5% 92%;
+    --input: 240 4% 23%;
+    --primary-foreground: 0 0% 100%;
+  }
+}
+
+body {
+  margin: 0;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: system-ui, sans-serif;
+}
+
+#root {
+  min-height: 100vh;
+}

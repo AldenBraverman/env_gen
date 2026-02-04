@@ -2,7 +2,7 @@
   ==============================================================================
 
     EnvelopeLane.cpp
-    A complete lane UI with step sequencer, envelope controls, and destination
+    Lane UI with step sequencer and envelope controls
 
   ==============================================================================
 */
@@ -10,7 +10,6 @@
 #include "EnvelopeLane.h"
 
 EnvelopeLane::EnvelopeLane(juce::AudioProcessorValueTreeState& apvts, int laneNumber)
-    : laneIndex(laneNumber - 1)
 {
     juce::String prefix = "lane" + juce::String(laneNumber);
 
@@ -50,12 +49,6 @@ EnvelopeLane::EnvelopeLane(juce::AudioProcessorValueTreeState& apvts, int laneNu
     rateAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         apvts, prefix + "_rate", rateCombo);
 
-    // Setup destination combo
-    setupComboBox(destCombo, destLabel, "Dest");
-    destCombo.addItemList({ "Cutoff", "Volume" }, 1);
-    destAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-        apvts, prefix + "_destination", destCombo);
-
     // Start timer for step visualization
     startTimerHz(30);
 }
@@ -91,12 +84,6 @@ void EnvelopeLane::resized()
     
     // Lane label on the left
     laneLabel.setBounds(bounds.removeFromLeft(labelWidth));
-    bounds.removeFromLeft(spacing);
-
-    // Destination combo
-    auto destArea = bounds.removeFromLeft(comboWidth);
-    destLabel.setBounds(destArea.removeFromTop(16));
-    destCombo.setBounds(destArea.removeFromTop(comboHeight));
     bounds.removeFromLeft(spacing);
 
     // Envelope knobs (A, H, D)
@@ -177,7 +164,7 @@ void EnvelopeLane::setupSlider(juce::Slider& slider, juce::Label& label, const j
     label.setText(labelText, juce::dontSendNotification);
     label.setJustificationType(juce::Justification::centred);
     label.setColour(juce::Label::textColourId, CustomLookAndFeel::textColour);
-    label.setFont(juce::Font(11.0f));
+    label.setFont(juce::Font(juce::FontOptions(11.0f)));
     addAndMakeVisible(label);
 }
 
@@ -188,6 +175,6 @@ void EnvelopeLane::setupComboBox(juce::ComboBox& combo, juce::Label& label, cons
     label.setText(labelText, juce::dontSendNotification);
     label.setJustificationType(juce::Justification::centred);
     label.setColour(juce::Label::textColourId, CustomLookAndFeel::textColour);
-    label.setFont(juce::Font(11.0f));
+    label.setFont(juce::Font(juce::FontOptions(11.0f)));
     addAndMakeVisible(label);
 }

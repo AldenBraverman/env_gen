@@ -2,7 +2,7 @@
   ==============================================================================
 
     EnvelopeLane.h
-    A complete lane UI with step sequencer, envelope controls, and destination
+    Lane UI with step sequencer and envelope controls (attack, hold, decay, rate, amount)
 
   ==============================================================================
 */
@@ -30,7 +30,6 @@ public:
     void setCurrentStep(int step);
 
 private:
-    int laneIndex;
     int currentPlayingStep = -1;
 
     // Labels
@@ -40,7 +39,6 @@ private:
     juce::Label decayLabel;
     juce::Label amountLabel;
     juce::Label rateLabel;
-    juce::Label destLabel;
 
     // Step buttons
     StepButton stepButtons[NUM_STEPS];
@@ -59,10 +57,6 @@ private:
     // Rate selector
     juce::ComboBox rateCombo;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> rateAttachment;
-
-    // Destination selector
-    juce::ComboBox destCombo;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> destAttachment;
 
     void setupSlider(juce::Slider& slider, juce::Label& label, const juce::String& labelText);
     void setupComboBox(juce::ComboBox& combo, juce::Label& label, const juce::String& labelText);
