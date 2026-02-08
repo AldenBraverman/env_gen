@@ -27,7 +27,13 @@ private:
     std::unique_ptr<juce::WebBrowserComponent> webBrowser;
     juce::File guiRootDir;
 
+    std::unique_ptr<juce::Component> envelopeOverlayHolder;
+    juce::WebBrowserComponent* envelopeOverlayBrowser = nullptr;
+    bool overlayTransparencyApplied = false;
+
     void pushParameterToWeb(const juce::String& id, float value);
+    void tryApplyOverlayTransparency();
+    void pushEnvelopeToOverlay(const float* data, int size);
     static juce::String escapeJsString(const juce::String& s);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EnvGenEditorWeb)

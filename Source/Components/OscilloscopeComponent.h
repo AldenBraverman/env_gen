@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 #include "../ScopeDataSink.h"
+#include <functional>
 
 class OsciloscopeComponent : public juce::Component,
                               public juce::Timer,
@@ -34,6 +35,12 @@ public:
     void setEnvelopeColour(juce::Colour colour) { envelopeColour = colour; }
     void setShowGrid(bool show) { showGrid = show; }
     void setShowEnvelope(bool show) { showEnvelope = show; }
+
+    /** When set, the scope does not draw the envelope in paint(); instead it calls this
+        after each display update with the current envelope display buffer (0..1 per pixel column).
+        Used for a WebView overlay that draws the envelope with smooth rendering. */
+    using EnvelopeOverlayCallback = std::function<void(const float* data, int size)>;
+    void setEnvelopeOverlayCallback(EnvelopeOverlayCallback cb) { envelopeOverlayCallback = std::move(cb); }
 
 private:
     // Audio data storage - stores samples for one full measure
@@ -72,6 +79,8 @@ private:
     std::vector<float> displayBuffer;
     std::vector<float> envelopeDisplayBuffer;
     bool needsDisplayUpdate;
+
+    EnvelopeOverlayCallback envelopeOverlayCallback;
     
     // Helper methods
     void updateDisplayBuffer();

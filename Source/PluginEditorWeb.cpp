@@ -1,6 +1,10 @@
 #if ENVGEN_USE_WEB_GUI && JUCE_WEB_BROWSER
 
 #include "PluginEditorWeb.h"
+#include <cstring>
+#if JUCE_MAC
+#include "EnvelopeOverlayMac.h"
+#endif
 
 namespace
 {
@@ -8,6 +12,78 @@ namespace
     constexpr int kDesignHeight = 560;
     constexpr int kScopeHeight  = 200;
     constexpr int kScopeMargin = 10;
+
+    class TransparentWebViewWrapper : public juce::Component
+    {
+    public:
+        explicit TransparentWebViewWrapper(const juce::WebBrowserComponent::Options& options)
+        {
+            setOpaque(false);
+            browser = std::make_unique<juce::WebBrowserComponent>(options);
+            browser->setOpaque(false);
+            addAndMakeVisible(*browser);
+        }
+        void paint(juce::Graphics&) override {}
+        void resized() override
+        {
+            if (browser != nullptr)
+                browser->setBounds(getLocalBounds());
+        }
+        juce::WebBrowserComponent* getBrowser() { return browser.get(); }
+    private:
+        std::unique_ptr<juce::WebBrowserComponent> browser;
+    };
+
+    juce::String getEnvelopeOverlayDataUrl()
+    {
+        const char* html = R"ENVHTML(
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>*{margin:0;padding:0}html,body{width:100%;height:100%;background:transparent}canvas{display:block;width:100%;height:100%}</style>
+</head><body><canvas id="c"></canvas><script>
+(function(){
+var c=document.getElementById('c'),ctx=c.getContext('2d');
+function resize(){c.width=c.offsetWidth;c.height=c.offsetHeight;}
+window.onresize=resize;resize();
+window.__ENVGEN__=window.__ENVGEN__||{};
+window.__ENVGEN__.drawEnvelope=function(points,width,height){
+if(!points||points.length===0)return;
+var w=c.width,h=c.height;
+if(width>0&&height>0){w=width;h=height;c.width=w;c.height=h;}
+ctx.clearRect(0,0,w,h);
+var smoothed=points.slice();
+for(var i=0;i<smoothed.length;i++){
+  if(i>=2&&i<smoothed.length-2)
+    smoothed[i]=(points[i-2]+4*points[i-1]+6*points[i]+4*points[i+1]+points[i+2])/16;
+  else if(i>=1&&i<smoothed.length-1)
+    smoothed[i]=(points[i-1]+points[i]*2+points[i+1])/4;
+}
+var maxVal=Math.max.apply(null,smoothed);
+if(maxVal<0.01)return;
+var scale=(h*0.9)/maxVal;
+ctx.strokeStyle='rgba(0,255,170,0.8)';ctx.lineWidth=2;ctx.lineJoin='round';ctx.lineCap='round';
+ctx.beginPath();
+for(var i=0;i<smoothed.length;i++){
+var x=(smoothed.length>1)?(i/(smoothed.length-1))*w:0;
+var y=h-smoothed[i]*scale;
+if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+}
+ctx.stroke();
+};
+})();
+</script></body></html>
+)ENVHTML";
+        juce::MemoryBlock mb(html, std::strlen(html));
+        juce::String enc = juce::Base64::toBase64(mb.getData(), mb.getSize());
+        // #region agent log
+        juce::String prefix = enc.substring(0, 40);
+        juce::File logFile("/Users/aldenbraverman/Desktop/opal_juce/env_gen/.cursor/debug.log");
+        if (auto stream = logFile.createOutputStream(std::ios::app))
+        {
+            stream->writeText("{\"hypothesisId\":\"H1\",\"location\":\"PluginEditorWeb.cpp:getEnvelopeOverlayDataUrl\",\"message\":\"encoding prefix\",\"data\":{\"encodingPrefix\":\"" + prefix.replace("\"", "\\\"").replace("\\", "\\\\") + "\",\"encodingLen\":" + juce::String(enc.length()) + "},\"timestamp\":\"post-fix\"}\n", false, false, nullptr);
+        }
+        // #endregion
+        return "data:text/html;base64," + enc;
+    }
 
     static const char* const kParamIds[] = {
         "inputGain", "outputGain", "dryPass",
@@ -145,6 +221,18 @@ EnvGenEditorWeb::EnvGenEditorWeb(EnvGenAudioProcessor& p)
     webBrowser = std::make_unique<juce::WebBrowserComponent>(options);
     addAndMakeVisible(webBrowser.get());
 
+#if JUCE_WINDOWS
+    // Transparent WebView overlay for smooth envelope (Windows only; macOS uses native drawn envelope)
+    juce::WebBrowserComponent::Options overlayOptions = options.withWinWebView2Options(
+        options.getWinWebView2BackendOptions().withBackgroundColour(juce::Colours::transparent));
+    auto overlayWrapper = std::make_unique<TransparentWebViewWrapper>(overlayOptions);
+    envelopeOverlayBrowser = overlayWrapper->getBrowser();
+    envelopeOverlayHolder = std::move(overlayWrapper);
+    addAndMakeVisible(envelopeOverlayHolder.get());
+    envelopeOverlayBrowser->goToURL(getEnvelopeOverlayDataUrl());
+    oscilloscope->setEnvelopeOverlayCallback([this](const float* data, int size) { pushEnvelopeToOverlay(data, size); });
+#endif
+
     const bool useDevEnv = juce::SystemStats::getEnvironmentVariable("ENVGEN_WEB_DEV", {}).equalsIgnoreCase("1");
 #if JUCE_WEB_BROWSER_RESOURCE_PROVIDER_AVAILABLE
     const bool haveEmbedded = guiRootDir.exists();
@@ -163,7 +251,10 @@ EnvGenEditorWeb::EnvGenEditorWeb(EnvGenAudioProcessor& p)
 
 EnvGenEditorWeb::~EnvGenEditorWeb()
 {
+    if (oscilloscope != nullptr)
+        oscilloscope->setEnvelopeOverlayCallback(nullptr);
     processorRef.setScopeSink(nullptr);
+    envelopeOverlayBrowser = nullptr;
     auto& apvts = processorRef.apvts;
     for (const auto* id : kParamIds)
         apvts.removeParameterListener(id, this);
@@ -174,15 +265,38 @@ void EnvGenEditorWeb::paint(juce::Graphics& g)
     g.fillAll(juce::Colour(0xff1c1c1e));
 }
 
+void EnvGenEditorWeb::tryApplyOverlayTransparency()
+{
+#if JUCE_MAC
+    if (overlayTransparencyApplied || envelopeOverlayBrowser == nullptr)
+        return;
+    if (auto* child = envelopeOverlayBrowser->getChildComponent(0))
+    {
+        if (auto* nsViewComp = dynamic_cast<juce::NSViewComponent*>(child))
+        {
+            void* view = nsViewComp->getView();
+            if (view != nullptr)
+            {
+                envgen_make_webview_background_transparent(view);
+                overlayTransparencyApplied = true;
+            }
+        }
+    }
+#endif
+}
+
 void EnvGenEditorWeb::resized()
 {
     auto bounds = getLocalBounds();
+    juce::Rectangle<int> scopeArea;
     if (oscilloscope != nullptr)
     {
-        auto scopeArea = bounds.removeFromTop(kScopeHeight + kScopeMargin).reduced(kScopeMargin, 0);
+        scopeArea = bounds.removeFromTop(kScopeHeight + kScopeMargin).reduced(kScopeMargin, 0);
         scopeArea.removeFromBottom(kScopeMargin);
         oscilloscope->setBounds(scopeArea);
     }
+    if (envelopeOverlayHolder != nullptr)
+        envelopeOverlayHolder->setBounds(scopeArea);
     if (webBrowser != nullptr)
         webBrowser->setBounds(bounds);
 }
@@ -211,6 +325,25 @@ juce::String EnvGenEditorWeb::escapeJsString(const juce::String& s)
             out << c;
     }
     return out;
+}
+
+void EnvGenEditorWeb::pushEnvelopeToOverlay(const float* data, int size)
+{
+    if (envelopeOverlayBrowser == nullptr || size <= 0)
+        return;
+    int w = (envelopeOverlayHolder != nullptr) ? envelopeOverlayHolder->getWidth() : 0;
+    int h = (envelopeOverlayHolder != nullptr) ? envelopeOverlayHolder->getHeight() : 0;
+    juce::String arrayStr = "[";
+    for (int i = 0; i < size; ++i)
+    {
+        if (i > 0)
+            arrayStr << ",";
+        arrayStr << juce::String(data[i]);
+    }
+    arrayStr << "]";
+    juce::String script = "if (window.__ENVGEN__ && typeof window.__ENVGEN__.drawEnvelope === 'function') { window.__ENVGEN__.drawEnvelope("
+        + arrayStr + ", " + juce::String(w) + ", " + juce::String(h) + "); }";
+    envelopeOverlayBrowser->evaluateJavascript(script, nullptr);
 }
 
 void EnvGenEditorWeb::pushParameterToWeb(const juce::String& id, float normalisedValue)

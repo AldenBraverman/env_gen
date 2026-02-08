@@ -2,7 +2,11 @@ cmake_minimum_required(VERSION 3.22)
 
 project(EnvGen VERSION 1.0.0)
 
-option(ENVGEN_USE_WEB_GUI "Use React web UI in plugin editor" OFF)
+option(ENVGEN_USE_WEB_GUI "Use React web UI in plugin editor" ON)
+
+if(APPLE AND ENVGEN_USE_WEB_GUI)
+    enable_language(OBJCXX)
+endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -34,30 +38,42 @@ juce_add_plugin(EnvGen
 juce_generate_juce_header(EnvGen)
 
 # Source files
-target_sources(EnvGen
-    PRIVATE
-        Source/PluginProcessor.cpp
-        Source/PluginProcessor.h
-        Source/PluginEditor.cpp
-        Source/PluginEditor.h
-        Source/DSP/Envelope.cpp
-        Source/DSP/Envelope.h
-        Source/DSP/StepSequencer.cpp
-        Source/DSP/StepSequencer.h
-        Source/Components/CustomLookAndFeel.cpp
-        Source/Components/CustomLookAndFeel.h
-        Source/Components/StepButton.cpp
-        Source/Components/StepButton.h
-        Source/Components/EnvelopeLane.cpp
-        Source/Components/EnvelopeLane.h
-        Source/Components/OscilloscopeComponent.cpp
-        Source/Components/OscilloscopeComponent.h
+set(ENVGEN_SOURCES
+    Source/PluginProcessor.cpp
+    Source/PluginProcessor.h
+    Source/PluginEditor.cpp
+    Source/PluginEditor.h
+    Source/DSP/Envelope.cpp
+    Source/DSP/Envelope.h
+    Source/DSP/StepSequencer.cpp
+    Source/DSP/StepSequencer.h
+    Source/Components/CustomLookAndFeel.cpp
+    Source/Components/CustomLookAndFeel.h
+    Source/Components/StepButton.cpp
+    Source/Components/StepButton.h
+    Source/Components/EnvelopeLane.cpp
+    Source/Components/EnvelopeLane.h
+    Source/Components/OscilloscopeComponent.cpp
+    Source/Components/OscilloscopeComponent.h
 )
 if(ENVGEN_USE_WEB_GUI)
-    target_sources(EnvGen PRIVATE
+    list(APPEND ENVGEN_SOURCES
         Source/PluginEditorWeb.cpp
         Source/PluginEditorWeb.h
     )
+endif()
+target_sources(EnvGen PRIVATE ${ENVGEN_SOURCES})
+
+# macOS WebView transparency: separate static lib so the .mm object is linked into wrappers
+if(APPLE AND ENVGEN_USE_WEB_GUI)
+    add_library(EnvGenMacOverlay STATIC Source/EnvelopeOverlayMac.mm)
+    target_include_directories(EnvGenMacOverlay PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Source)
+    target_compile_definitions(EnvGenMacOverlay PRIVATE JUCE_MAC=1)
+    target_link_libraries(EnvGen_Standalone PRIVATE EnvGenMacOverlay)
+    target_link_libraries(EnvGen_VST3 PRIVATE EnvGenMacOverlay)
+endif()
+
+if(ENVGEN_USE_WEB_GUI)
     set(GUI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/gui")
     set(ENVGEN_GUI_OUT "${CMAKE_CURRENT_BINARY_DIR}/EnvGenGui")
     add_custom_target(EnvGenGui

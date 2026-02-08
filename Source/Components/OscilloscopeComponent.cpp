@@ -59,8 +59,8 @@ void OsciloscopeComponent::paint(juce::Graphics& g)
     int centerY = displayArea.getCentreY();
     g.drawHorizontalLine(centerY, static_cast<float>(displayArea.getX()), static_cast<float>(displayArea.getRight()));
     
-    // Draw envelope first (behind waveform)
-    if (showEnvelope)
+    // Draw envelope first (behind waveform) unless an overlay callback is set (overlay draws it)
+    if (showEnvelope && !envelopeOverlayCallback)
         drawEnvelope(g, displayArea);
     
     // Draw waveform
@@ -80,6 +80,16 @@ void OsciloscopeComponent::timerCallback()
         updateDisplayBuffer();
         needsDisplayUpdate = false;
         repaint();
+        if (envelopeOverlayCallback)
+        {
+            std::vector<float> copy;
+            {
+                const juce::ScopedLock lock(bufferLock);
+                copy = envelopeDisplayBuffer;
+            }
+            if (!copy.empty())
+                envelopeOverlayCallback(copy.data(), static_cast<int>(copy.size()));
+        }
     }
 }
 
@@ -375,19 +385,31 @@ void OsciloscopeComponent::drawEnvelope(juce::Graphics& g, juce::Rectangle<int> 
     
     int width = bounds.getWidth();
     int height = bounds.getHeight();
-    
-    // Find max envelope value for scaling
-    float maxEnvValue = 0.0f;
     int samplesToDraw = juce::jmin(width, static_cast<int>(envelopeDisplayBuffer.size()));
-    
+    if (samplesToDraw <= 0)
+        return;
+
+    // 5-point binomial smoothing [1,4,6,4,1]/16 for interior; 3-point at edges
+    std::vector<float> smoothed(static_cast<size_t>(samplesToDraw));
+    const float one16 = 1.0f / 16.0f;
     for (int x = 0; x < samplesToDraw; ++x)
     {
-        maxEnvValue = juce::jmax(maxEnvValue, envelopeDisplayBuffer[x]);
+        float v = envelopeDisplayBuffer[static_cast<size_t>(x)];
+        if (x >= 2 && x < samplesToDraw - 2)
+            v = (envelopeDisplayBuffer[static_cast<size_t>(x - 2)] + 4.0f * envelopeDisplayBuffer[static_cast<size_t>(x - 1)]
+                 + 6.0f * v + 4.0f * envelopeDisplayBuffer[static_cast<size_t>(x + 1)]
+                 + envelopeDisplayBuffer[static_cast<size_t>(x + 2)]) * one16;
+        else if (x > 0 && x < samplesToDraw - 1)
+            v = (envelopeDisplayBuffer[static_cast<size_t>(x - 1)] + 2.0f * v + envelopeDisplayBuffer[static_cast<size_t>(x + 1)]) * 0.25f;
+        smoothed[static_cast<size_t>(x)] = v;
     }
+
+    float maxEnvValue = 0.0f;
+    for (int x = 0; x < samplesToDraw; ++x)
+        maxEnvValue = juce::jmax(maxEnvValue, smoothed[static_cast<size_t>(x)]);
     
-    // Scale envelope to fill height (if there's any envelope activity)
     if (maxEnvValue < 0.01f)
-        return;  // No significant envelope activity
+        return;
     
     float envelopeScale = (height * 0.9f) / maxEnvValue;
     
@@ -398,7 +420,7 @@ void OsciloscopeComponent::drawEnvelope(juce::Graphics& g, juce::Rectangle<int> 
     
     for (int x = 0; x < samplesToDraw; ++x)
     {
-        float envValue = envelopeDisplayBuffer[x];
+        float envValue = smoothed[static_cast<size_t>(x)];
         float pixelY = bounds.getBottom() - (envValue * envelopeScale);
         
         // Clamp to bounds
