@@ -3,6 +3,7 @@ import {
   getState,
   setParameter,
   setEnvGenCallbacks,
+  resetAllParameters,
 } from "./lib/bridge";
 import {
   getParamMeta,
@@ -237,7 +238,15 @@ export default function App() {
         ))}
       </div>
 
-      <div className="mt-2 flex justify-end">
+      <div className="mt-2 flex justify-end gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => resetAllParameters()}
+          title="Set all parameters to default values"
+        >
+          Reset All
+        </Button>
         <Button
           variant="outline"
           size="sm"

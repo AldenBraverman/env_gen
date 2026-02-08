@@ -41,6 +41,7 @@ private:
     juce::Slider inputGainSlider;
     juce::Slider outputGainSlider;
     juce::ToggleButton dryPassButton;
+    juce::TextButton resetAllButton;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> inputGainAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> outputGainAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> dryPassAttachment;

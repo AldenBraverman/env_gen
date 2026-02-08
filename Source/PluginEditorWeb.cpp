@@ -15,7 +15,7 @@ namespace
         "lane1_step4", "lane1_step5", "lane1_step6", "lane1_step7",
         "lane1_step8", "lane1_step9", "lane1_step10", "lane1_step11",
         "lane1_step12", "lane1_step13", "lane1_step14", "lane1_step15",
-        "lane1_attack", "lane1_hold", "lane1_decay", "lane1_rate", "lane1_amount"
+        "lane1_attack", "lane1_hold", "lane1_decay", "lane1_rate", "lane1_destination", "lane1_amount"
     };
 
     juce::File getGuiRootDirectory()
@@ -133,6 +133,13 @@ EnvGenEditorWeb::EnvGenEditorWeb(EnvGenAudioProcessor& p)
         }
         if (completion)
             completion(juce::var(obj.get()));
+    });
+
+    options = options.withNativeFunction("resetAllParameters", [this](const juce::Array<juce::var>&, juce::WebBrowserComponent::NativeFunctionCompletion completion)
+    {
+        processorRef.resetAllParametersToDefault();
+        if (completion)
+            completion(juce::var(true));
     });
 
     webBrowser = std::make_unique<juce::WebBrowserComponent>(options);

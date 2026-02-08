@@ -18,7 +18,7 @@ export const SECTIONS: SectionConfig[] = [
       "lane1_step4", "lane1_step5", "lane1_step6", "lane1_step7",
       "lane1_step8", "lane1_step9", "lane1_step10", "lane1_step11",
       "lane1_step12", "lane1_step13", "lane1_step14", "lane1_step15",
-      "lane1_attack", "lane1_hold", "lane1_decay", "lane1_rate", "lane1_amount",
+      "lane1_attack", "lane1_hold", "lane1_decay", "lane1_rate", "lane1_destination", "lane1_amount",
     ],
   },
 ];

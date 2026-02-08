@@ -18,6 +18,9 @@ void Envelope::prepare(double newSampleRate)
 {
     sampleRate = newSampleRate;
     calculateCoefficients();
+    float tau = static_cast<float>(kSmoothTimeSeconds * sampleRate);
+    smoothCoeff = (tau > 0.0f) ? (1.0f - std::exp(-1.0f / tau)) : 1.0f;
+    smoothCoeff = juce::jlimit(0.0001f, 1.0f, smoothCoeff);
     reset();
 }
 
@@ -25,6 +28,7 @@ void Envelope::reset()
 {
     phase = Phase::Idle;
     currentValue = 0.0f;
+    smoothedValue = 0.0f;
     sampleCounter = 0;
 }
 
@@ -79,7 +83,8 @@ float Envelope::process()
             break;
     }
 
-    return currentValue;
+    smoothedValue += smoothCoeff * (currentValue - smoothedValue);
+    return smoothedValue;
 }
 
 void Envelope::setAttack(float attackTimeSeconds)

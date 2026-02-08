@@ -49,6 +49,12 @@ EnvelopeLane::EnvelopeLane(juce::AudioProcessorValueTreeState& apvts, int laneNu
     rateAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         apvts, prefix + "_rate", rateCombo);
 
+    // Setup destination (Assign) combo
+    setupComboBox(destinationCombo, destinationLabel, "Assign");
+    destinationCombo.addItemList({ "None", "Amplitude" }, 1);
+    destinationAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+        apvts, prefix + "_destination", destinationCombo);
+
     // Start timer for step visualization
     startTimerHz(30);
 }
@@ -112,6 +118,12 @@ void EnvelopeLane::resized()
     auto rateArea = bounds.removeFromLeft(comboWidth);
     rateLabel.setBounds(rateArea.removeFromTop(16));
     rateCombo.setBounds(rateArea.removeFromTop(comboHeight));
+    bounds.removeFromLeft(spacing);
+
+    // Destination (Assign) combo
+    auto destArea = bounds.removeFromLeft(comboWidth);
+    destinationLabel.setBounds(destArea.removeFromTop(16));
+    destinationCombo.setBounds(destArea.removeFromTop(comboHeight));
     bounds.removeFromLeft(spacing * 2);
 
     // Step buttons - fill remaining space

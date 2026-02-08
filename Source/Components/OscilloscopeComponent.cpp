@@ -232,25 +232,29 @@ void OsciloscopeComponent::updateDisplayBuffer()
         expectedTotalSamples = juce::jlimit(1, measureBufferCapacity, expectedTotalSamples);
     }
     
-    // Map samples directly to pixels based on expected total
+    // Map samples to pixels: waveform = one sample per pixel; envelope = peak-hold per pixel column
+    const float widthF = static_cast<float>(width);
     for (int x = 0; x < width; ++x)
     {
-        // Calculate which sample corresponds to this pixel in the full measure
-        float sampleIndex = (x / static_cast<float>(width)) * expectedTotalSamples;
+        // Waveform: single sample per pixel (unchanged)
+        float sampleIndex = (x / widthF) * expectedTotalSamples;
         int index = static_cast<int>(sampleIndex);
-        
         if (index < measureBufferWritePosition)
-        {
-            // We have this sample - display it
             displayBuffer[x] = measureBuffer[index];
-            envelopeDisplayBuffer[x] = envelopeMeasureBuffer[index];
-        }
         else
-        {
-            // Haven't reached this part yet - show zero
             displayBuffer[x] = 0.0f;
-            envelopeDisplayBuffer[x] = 0.0f;
-        }
+
+        // Envelope: max over the sample range that maps to this pixel column (peak-hold)
+        int startIdx = static_cast<int>((x / widthF) * expectedTotalSamples);
+        int endIdx = static_cast<int>(((x + 1) / widthF) * expectedTotalSamples);
+        if (endIdx <= startIdx)
+            endIdx = startIdx + 1;
+        startIdx = juce::jlimit(0, measureBufferWritePosition, startIdx);
+        endIdx = juce::jlimit(0, measureBufferWritePosition, endIdx);
+        float peak = 0.0f;
+        for (int k = startIdx; k < endIdx; ++k)
+            peak = juce::jmax(peak, envelopeMeasureBuffer[static_cast<size_t>(k)]);
+        envelopeDisplayBuffer[static_cast<size_t>(x)] = peak;
     }
 }
 

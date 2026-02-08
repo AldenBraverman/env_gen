@@ -59,6 +59,11 @@ EnvGenAudioProcessorEditor::EnvGenAudioProcessorEditor(EnvGenAudioProcessor& p)
     dryPassAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
         audioProcessor.apvts, "dryPass", dryPassButton);
 
+    // Reset All button
+    resetAllButton.setButtonText("Reset All");
+    resetAllButton.onClick = [this]() { audioProcessor.resetAllParametersToDefault(); };
+    addAndMakeVisible(resetAllButton);
+
     // Create oscilloscope display
     oscilloscope = std::make_unique<OsciloscopeComponent>();
     
@@ -139,6 +144,11 @@ void EnvGenAudioProcessorEditor::resized()
     // Dry pass button
     auto dryPassArea = headerSection.removeFromLeft(50);
     dryPassButton.setBounds(dryPassArea.reduced(0, 18));
+    headerSection.removeFromLeft(margin);
+
+    // Reset All button (right side of header)
+    auto resetArea = headerSection.removeFromRight(80);
+    resetAllButton.setBounds(resetArea.reduced(0, 18));
 
     bounds.removeFromTop(margin);
 

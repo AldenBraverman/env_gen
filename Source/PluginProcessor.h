@@ -31,7 +31,7 @@ namespace ParameterID
     PARAMETER_ID(lane1_step8)  PARAMETER_ID(lane1_step9)  PARAMETER_ID(lane1_step10) PARAMETER_ID(lane1_step11)
     PARAMETER_ID(lane1_step12) PARAMETER_ID(lane1_step13) PARAMETER_ID(lane1_step14) PARAMETER_ID(lane1_step15)
     PARAMETER_ID(lane1_attack) PARAMETER_ID(lane1_hold)   PARAMETER_ID(lane1_decay)  PARAMETER_ID(lane1_rate)
-    PARAMETER_ID(lane1_amount)
+    PARAMETER_ID(lane1_destination) PARAMETER_ID(lane1_amount)
 
     #undef PARAMETER_ID
 }
@@ -88,6 +88,9 @@ public:
     // Set scope data sink for waveform display (native OsciloscopeComponent or web ScopeBuffer)
     void setScopeSink(ScopeDataSink* sink) { scopeSink = sink; }
 
+    /** Set every parameter to its default value (from createParameterLayout). */
+    void resetAllParametersToDefault();
+
 private:
     //==============================================================================
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
@@ -111,6 +114,7 @@ private:
         juce::AudioParameterFloat* decay = nullptr;
         juce::AudioParameterFloat* amount = nullptr;
         juce::AudioParameterChoice* rate = nullptr;
+        juce::AudioParameterChoice* destination = nullptr;
     };
     LaneParams laneParams[NUM_LANES];
 

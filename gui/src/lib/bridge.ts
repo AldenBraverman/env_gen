@@ -66,6 +66,10 @@ export function setParameter(id: string, value: number): Promise<unknown> {
   return invoke("setParameter", id, value);
 }
 
+export function resetAllParameters(): Promise<unknown> {
+  return invoke("resetAllParameters");
+}
+
 export type EnvGenCallbacks = {
   updateParams?: (id: string, value: number) => void;
 };

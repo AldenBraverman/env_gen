@@ -39,6 +39,7 @@ private:
     juce::Label decayLabel;
     juce::Label amountLabel;
     juce::Label rateLabel;
+    juce::Label destinationLabel;
 
     // Step buttons
     StepButton stepButtons[NUM_STEPS];
@@ -57,6 +58,10 @@ private:
     // Rate selector
     juce::ComboBox rateCombo;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> rateAttachment;
+
+    // Destination (Assign) selector
+    juce::ComboBox destinationCombo;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> destinationAttachment;
 
     void setupSlider(juce::Slider& slider, juce::Label& label, const juce::String& labelText);
     void setupComboBox(juce::ComboBox& combo, juce::Label& label, const juce::String& labelText);

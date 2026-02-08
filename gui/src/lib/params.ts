@@ -27,6 +27,7 @@ export const PARAMS: ParamMeta[] = [
   { id: "lane1_hold", label: "Hold", min: 0, max: 10, step: 0.001, unit: "s", type: "float", skew: 0.3 },
   { id: "lane1_decay", label: "Decay", min: 0.001, max: 10, step: 0.001, unit: "s", type: "float", skew: 0.3 },
   { id: "lane1_rate", label: "Rate", type: "choice", choices: RATE_CHOICES },
+  { id: "lane1_destination", label: "Assign", type: "choice", choices: ["None", "Amplitude"] },
   { id: "lane1_amount", label: "Amount", min: -1, max: 1, step: 0.01, type: "float" },
 ];
 

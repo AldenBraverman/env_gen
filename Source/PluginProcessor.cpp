@@ -38,6 +38,7 @@ EnvGenAudioProcessor::EnvGenAudioProcessor()
     laneParams[0].decay = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter(prefix + "_decay"));
     laneParams[0].amount = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter(prefix + "_amount"));
     laneParams[0].rate = dynamic_cast<juce::AudioParameterChoice*>(apvts.getParameter(prefix + "_rate"));
+    laneParams[0].destination = dynamic_cast<juce::AudioParameterChoice*>(apvts.getParameter(prefix + "_destination"));
 }
 
 EnvGenAudioProcessor::~EnvGenAudioProcessor()
@@ -165,10 +166,14 @@ void EnvGenAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
             envelopes[0].trigger();
         }
 
-        // Single lane: volume modulation only
+        // Single lane: apply to amplitude only when destination is Amplitude
         float envValue = envelopes[0].process();
-        float amount = laneParams[0].amount->get();  // -1.0 to 1.0
-        float volumeModulation = envValue * amount;
+        float volumeModulation = 0.0f;
+        if (laneParams[0].destination != nullptr && laneParams[0].destination->getIndex() == 1) // Amplitude
+        {
+            float amount = laneParams[0].amount->get();  // -1.0 to 1.0
+            volumeModulation = envValue * amount;
+        }
 
         // Volume gain: Dry OFF = silence until envelope; Dry ON = dry at unity, envelope adds on top
         bool dryPass = dryPassParam->get();
@@ -280,6 +285,16 @@ int EnvGenAudioProcessor::getCurrentStep(int laneIndex) const
 }
 
 //==============================================================================
+void EnvGenAudioProcessor::resetAllParametersToDefault()
+{
+    for (auto* param : getParameters())
+    {
+        if (param != nullptr)
+            param->setValueNotifyingHost(param->getDefaultValue());
+    }
+}
+
+//==============================================================================
 void EnvGenAudioProcessor::updateLaneFromParams(int laneIndex)
 {
     if (laneIndex < 0 || laneIndex >= NUM_LANES)
@@ -356,6 +371,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout EnvGenAudioProcessor::create
     layout.add(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID(prefix + "_rate", 1), "Rate",
         rateChoices, 4)); // Default to 1/16
+
+    // Destination (None = no modulation, Amplitude = volume)
+    juce::StringArray destChoices{ "None", "Amplitude" };
+    layout.add(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID(prefix + "_destination", 1), "Assign",
+        destChoices, 0)); // Default to None
 
     // Amount (bipolar: -100% to +100%)
     layout.add(std::make_unique<juce::AudioParameterFloat>(

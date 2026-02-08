@@ -34,8 +34,8 @@ public:
     // Process and return the current envelope value (0.0 to 1.0)
     float process();
 
-    // Get current envelope value without advancing
-    float getCurrentValue() const { return currentValue; }
+    // Get current envelope value without advancing (smoothed output)
+    float getCurrentValue() const { return smoothedValue; }
 
     // Check if envelope is active
     bool isActive() const { return phase != Phase::Idle; }
@@ -49,7 +49,13 @@ public:
     Phase getPhase() const { return phase; }
 
 private:
+    static constexpr float kSmoothTimeSeconds = 0.002f;  // 2 ms one-pole smoothing
+
     double sampleRate = 44100.0;
+
+    // Smoothed output (one-pole lowpass)
+    float smoothedValue = 0.0f;
+    float smoothCoeff = 0.0f;
     
     // Time parameters in seconds
     float attackTime = 0.01f;
