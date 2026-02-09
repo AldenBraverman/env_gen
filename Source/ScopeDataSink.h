@@ -27,6 +27,13 @@ public:
     /** Add envelope values (0..1) aligned with the audio buffer. */
     virtual void pushEnvelopeBuffer(const float* samples, int numSamples) = 0;
 
+    /** Add envelope values for a specific lane (0..7). Default: only lane 0 is forwarded to pushEnvelopeBuffer(samples, numSamples). */
+    virtual void pushEnvelopeBuffer(const float* samples, int numSamples, int laneIndex)
+    {
+        if (laneIndex == 0)
+            pushEnvelopeBuffer(samples, numSamples);
+    }
+
     /** Update playhead (BPM, PPQ, time sig) for measure-boundary detection. */
     virtual void updatePlayheadInfo(const juce::AudioPlayHead::CurrentPositionInfo& info) = 0;
 };

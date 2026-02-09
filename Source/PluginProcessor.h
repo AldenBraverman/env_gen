@@ -24,8 +24,9 @@ namespace ParameterID
     PARAMETER_ID(inputGain)
     PARAMETER_ID(outputGain)
     PARAMETER_ID(dryPass)
+    PARAMETER_ID(numLanes)
 
-    // Lane 1 (single lane)
+    // Lane 1 (lane2..lane8 use getStepParamID / string IDs in layout)
     PARAMETER_ID(lane1_step0)  PARAMETER_ID(lane1_step1)  PARAMETER_ID(lane1_step2)  PARAMETER_ID(lane1_step3)
     PARAMETER_ID(lane1_step4)  PARAMETER_ID(lane1_step5)  PARAMETER_ID(lane1_step6)  PARAMETER_ID(lane1_step7)
     PARAMETER_ID(lane1_step8)  PARAMETER_ID(lane1_step9)  PARAMETER_ID(lane1_step10) PARAMETER_ID(lane1_step11)
@@ -41,7 +42,7 @@ class EnvGenAudioProcessor : public juce::AudioProcessor
 {
 public:
     //==============================================================================
-    static constexpr int NUM_LANES = 1;
+    static constexpr int NUM_LANES = 8;
     static constexpr int NUM_STEPS = 16;
 
     //==============================================================================
@@ -104,6 +105,7 @@ private:
     juce::AudioParameterFloat* inputGainParam = nullptr;
     juce::AudioParameterFloat* outputGainParam = nullptr;
     juce::AudioParameterBool* dryPassParam = nullptr;
+    juce::AudioParameterInt* numLanesParam = nullptr;
 
     // Per-lane parameters
     struct LaneParams

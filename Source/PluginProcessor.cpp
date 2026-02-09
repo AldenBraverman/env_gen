@@ -25,20 +25,24 @@ EnvGenAudioProcessor::EnvGenAudioProcessor()
     inputGainParam = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter("inputGain"));
     outputGainParam = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter("outputGain"));
     dryPassParam = dynamic_cast<juce::AudioParameterBool*>(apvts.getParameter("dryPass"));
+    numLanesParam = dynamic_cast<juce::AudioParameterInt*>(apvts.getParameter("numLanes"));
 
-    // Get per-lane parameter pointers (single lane)
-    const juce::String prefix("lane1");
-    for (int step = 0; step < NUM_STEPS; ++step)
+    // Get per-lane parameter pointers (lanes 1..8)
+    for (int lane = 0; lane < NUM_LANES; ++lane)
     {
-        juce::String paramName = prefix + "_step" + juce::String(step);
-        laneParams[0].steps[step] = dynamic_cast<juce::AudioParameterBool*>(apvts.getParameter(paramName));
+        juce::String prefix = "lane" + juce::String(lane + 1);
+        for (int step = 0; step < NUM_STEPS; ++step)
+        {
+            juce::String paramName = prefix + "_step" + juce::String(step);
+            laneParams[lane].steps[step] = dynamic_cast<juce::AudioParameterBool*>(apvts.getParameter(paramName));
+        }
+        laneParams[lane].attack = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter(prefix + "_attack"));
+        laneParams[lane].hold = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter(prefix + "_hold"));
+        laneParams[lane].decay = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter(prefix + "_decay"));
+        laneParams[lane].amount = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter(prefix + "_amount"));
+        laneParams[lane].rate = dynamic_cast<juce::AudioParameterChoice*>(apvts.getParameter(prefix + "_rate"));
+        laneParams[lane].destination = dynamic_cast<juce::AudioParameterChoice*>(apvts.getParameter(prefix + "_destination"));
     }
-    laneParams[0].attack = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter(prefix + "_attack"));
-    laneParams[0].hold = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter(prefix + "_hold"));
-    laneParams[0].decay = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter(prefix + "_decay"));
-    laneParams[0].amount = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter(prefix + "_amount"));
-    laneParams[0].rate = dynamic_cast<juce::AudioParameterChoice*>(apvts.getParameter(prefix + "_rate"));
-    laneParams[0].destination = dynamic_cast<juce::AudioParameterChoice*>(apvts.getParameter(prefix + "_destination"));
 }
 
 EnvGenAudioProcessor::~EnvGenAudioProcessor()
@@ -104,8 +108,10 @@ void EnvGenAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
         sequencers[i].prepare(sampleRate);
     }
 
-    // Initialize from parameters
-    updateLaneFromParams(0);
+    // Initialize from parameters for all active lanes
+    const int n = numLanesParam != nullptr ? numLanesParam->get() : 0;
+    for (int i = 0; i < n && i < NUM_LANES; ++i)
+        updateLaneFromParams(i);
 
     // Allocate temporary buffers for oscilloscope data
     monoBuffer.resize(static_cast<size_t>(samplesPerBlock));
@@ -151,8 +157,11 @@ void EnvGenAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
             positionInfo = *pos;
     }
 
-    // Update parameters
-    updateLaneFromParams(0);
+    const int numActiveLanes = (numLanesParam != nullptr) ? numLanesParam->get() : 0;
+
+    // Update parameters for active lanes only
+    for (int i = 0; i < numActiveLanes && i < NUM_LANES; ++i)
+        updateLaneFromParams(i);
 
     const int numSamples = buffer.getNumSamples();
     const int numChannels = buffer.getNumChannels();
@@ -160,19 +169,22 @@ void EnvGenAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     // Process sample by sample for accurate envelope/sequencer timing
     for (int sample = 0; sample < numSamples; ++sample)
     {
-        // Process sequencer and trigger envelope
-        if (sequencers[0].process(positionInfo))
-        {
-            envelopes[0].trigger();
-        }
-
-        // Single lane: apply to amplitude only when destination is Amplitude
-        float envValue = envelopes[0].process();
         float volumeModulation = 0.0f;
-        if (laneParams[0].destination != nullptr && laneParams[0].destination->getIndex() == 1) // Amplitude
+
+        if (numActiveLanes > 0)
         {
-            float amount = laneParams[0].amount->get();  // -1.0 to 1.0
-            volumeModulation = envValue * amount;
+            for (int lane = 0; lane < numActiveLanes && lane < NUM_LANES; ++lane)
+            {
+                if (sequencers[lane].process(positionInfo))
+                    envelopes[lane].trigger();
+
+                float envValue = envelopes[lane].process();
+                if (laneParams[lane].destination != nullptr && laneParams[lane].destination->getIndex() == 1) // Amplitude
+                {
+                    float amount = laneParams[lane].amount->get();
+                    volumeModulation += envValue * amount;
+                }
+            }
         }
 
         // Volume gain: Dry OFF = silence until envelope; Dry ON = dry at unity, envelope adds on top
@@ -231,12 +243,15 @@ void EnvGenAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
             }
             monoSample /= static_cast<float>(numChannels);
             monoBuffer[static_cast<size_t>(sample)] = juce::jlimit(-1.0f, 1.0f, monoSample);
-            float envelopeSum = envelopes[0].getCurrentValue();
-            envelopeBuffer[static_cast<size_t>(sample)] = juce::jlimit(0.0f, 1.0f, envelopeSum);
         }
-        
         scopeSink->pushBuffer(monoBuffer.data(), numSamples);
-        scopeSink->pushEnvelopeBuffer(envelopeBuffer.data(), numSamples);
+
+        for (int lane = 0; lane < numActiveLanes && lane < NUM_LANES; ++lane)
+        {
+            for (int sample = 0; sample < numSamples; ++sample)
+                envelopeBuffer[static_cast<size_t>(sample)] = juce::jlimit(0.0f, 1.0f, envelopes[lane].getCurrentValue());
+            scopeSink->pushEnvelopeBuffer(envelopeBuffer.data(), numSamples, lane);
+        }
     }
 }
 
@@ -295,6 +310,15 @@ void EnvGenAudioProcessor::resetAllParametersToDefault()
 }
 
 //==============================================================================
+juce::ParameterID EnvGenAudioProcessor::getStepParamID(int laneIndex, int stepIndex)
+{
+    if (laneIndex < 0 || laneIndex >= NUM_LANES || stepIndex < 0 || stepIndex >= NUM_STEPS)
+        return juce::ParameterID("lane1_step0", 1);
+    juce::String id = "lane" + juce::String(laneIndex + 1) + "_step" + juce::String(stepIndex);
+    return juce::ParameterID(id, 1);
+}
+
+//==============================================================================
 void EnvGenAudioProcessor::updateLaneFromParams(int laneIndex)
 {
     if (laneIndex < 0 || laneIndex >= NUM_LANES)
@@ -338,51 +362,49 @@ juce::AudioProcessorValueTreeState::ParameterLayout EnvGenAudioProcessor::create
     layout.add(std::make_unique<juce::AudioParameterBool>(
         ::ParameterID::dryPass, "Dry", false));  // OFF = silence until envelope; ON = dry passes, envelope adds
 
-    // Single lane parameters (steps, attack, hold, decay, rate, amount)
+    // Number of active lanes (0..8, default 0)
+    layout.add(std::make_unique<juce::AudioParameterInt>(
+        ::ParameterID::numLanes, "Lanes", 0, 8, 0));
+
     juce::StringArray rateChoices{ "1/1", "1/2", "1/4", "1/8", "1/16", "1/32" };
-    const juce::String prefix("lane1");
-
-    // Step buttons
-    for (int step = 0; step < NUM_STEPS; ++step)
-    {
-        juce::String stepId = prefix + "_step" + juce::String(step);
-        juce::String stepName = "Step " + juce::String(step + 1);
-        layout.add(std::make_unique<juce::AudioParameterBool>(
-            juce::ParameterID(stepId, 1), stepName, false));
-    }
-
-    // Envelope parameters
-    layout.add(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID(prefix + "_attack", 1), "Attack",
-        juce::NormalisableRange<float>(0.001f, 10.0f, 0.001f, 0.3f),
-        0.01f, "s"));
-
-    layout.add(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID(prefix + "_hold", 1), "Hold",
-        juce::NormalisableRange<float>(0.0f, 10.0f, 0.001f, 0.3f),
-        0.1f, "s"));
-
-    layout.add(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID(prefix + "_decay", 1), "Decay",
-        juce::NormalisableRange<float>(0.001f, 10.0f, 0.001f, 0.3f),
-        0.5f, "s"));
-
-    // Rate
-    layout.add(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID(prefix + "_rate", 1), "Rate",
-        rateChoices, 4)); // Default to 1/16
-
-    // Destination (None = no modulation, Amplitude = volume)
     juce::StringArray destChoices{ "None", "Amplitude" };
-    layout.add(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID(prefix + "_destination", 1), "Assign",
-        destChoices, 0)); // Default to None
 
-    // Amount (bipolar: -100% to +100%)
-    layout.add(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID(prefix + "_amount", 1), "Amount",
-        juce::NormalisableRange<float>(-1.0f, 1.0f, 0.01f),
-        1.0f)); // Default to 100%
+    // Lane parameters (lanes 1..8: steps, attack, hold, decay, rate, destination, amount)
+    for (int lane = 0; lane < NUM_LANES; ++lane)
+    {
+        juce::String prefix = "lane" + juce::String(lane + 1);
+
+        for (int step = 0; step < NUM_STEPS; ++step)
+        {
+            juce::String stepId = prefix + "_step" + juce::String(step);
+            juce::String stepName = "Step " + juce::String(step + 1);
+            layout.add(std::make_unique<juce::AudioParameterBool>(
+                juce::ParameterID(stepId, 1), stepName, false));
+        }
+
+        layout.add(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID(prefix + "_attack", 1), "Attack",
+            juce::NormalisableRange<float>(0.001f, 10.0f, 0.001f, 0.3f),
+            0.01f, "s"));
+        layout.add(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID(prefix + "_hold", 1), "Hold",
+            juce::NormalisableRange<float>(0.0f, 10.0f, 0.001f, 0.3f),
+            0.1f, "s"));
+        layout.add(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID(prefix + "_decay", 1), "Decay",
+            juce::NormalisableRange<float>(0.001f, 10.0f, 0.001f, 0.3f),
+            0.5f, "s"));
+        layout.add(std::make_unique<juce::AudioParameterChoice>(
+            juce::ParameterID(prefix + "_rate", 1), "Rate",
+            rateChoices, 4));
+        layout.add(std::make_unique<juce::AudioParameterChoice>(
+            juce::ParameterID(prefix + "_destination", 1), "Assign",
+            destChoices, 0));
+        layout.add(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID(prefix + "_amount", 1), "Amount",
+            juce::NormalisableRange<float>(-1.0f, 1.0f, 0.01f),
+            1.0f));
+    }
 
     return layout;
 }

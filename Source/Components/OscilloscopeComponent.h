@@ -2,7 +2,11 @@
 
 #include <JuceHeader.h>
 #include "../ScopeDataSink.h"
+#include <array>
 #include <functional>
+#include <vector>
+
+static constexpr int kMaxEnvelopeLanes = 8;
 
 class OsciloscopeComponent : public juce::Component,
                               public juce::Timer,
@@ -22,6 +26,7 @@ public:
     // ScopeDataSink interface
     void pushBuffer(const float* samples, int numSamples) override;
     void pushEnvelopeBuffer(const float* samples, int numSamples) override;
+    void pushEnvelopeBuffer(const float* samples, int numSamples, int laneIndex) override;
     void updatePlayheadInfo(const juce::AudioPlayHead::CurrentPositionInfo& info) override;
     
     // Configuration
@@ -37,15 +42,17 @@ public:
     void setShowEnvelope(bool show) { showEnvelope = show; }
 
     /** When set, the scope does not draw the envelope in paint(); instead it calls this
-        after each display update with the current envelope display buffer (0..1 per pixel column).
-        Used for a WebView overlay that draws the envelope with smooth rendering. */
-    using EnvelopeOverlayCallback = std::function<void(const float* data, int size)>;
+        with per-lane display buffers and colours. buffers[i] has size sizes[i]; numLanes up to kMaxEnvelopeLanes. */
+    using EnvelopeOverlayCallback = std::function<void(const float* const* buffers, const int* sizes, int numLanes, const juce::Colour* colours)>;
     void setEnvelopeOverlayCallback(EnvelopeOverlayCallback cb) { envelopeOverlayCallback = std::move(cb); }
+
+    /** Fixed palette for lane envelope colours (index 0..kMaxEnvelopeLanes-1). Shared with overlay and web UI. */
+    static juce::Colour getLaneColour(int laneIndex);
 
 private:
     // Audio data storage - stores samples for one full measure
     std::vector<float> measureBuffer;
-    std::vector<float> envelopeMeasureBuffer;  // Envelope values for one measure
+    std::array<std::vector<float>, kMaxEnvelopeLanes> envelopeMeasureBuffers;
     int measureBufferWritePosition;
     int measureBufferCapacity;
     
@@ -77,7 +84,7 @@ private:
     
     // Display buffer for rendering
     std::vector<float> displayBuffer;
-    std::vector<float> envelopeDisplayBuffer;
+    std::array<std::vector<float>, kMaxEnvelopeLanes> envelopeDisplayBuffers;
     bool needsDisplayUpdate;
 
     EnvelopeOverlayCallback envelopeOverlayCallback;

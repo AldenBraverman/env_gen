@@ -45,29 +45,40 @@ var c=document.getElementById('c'),ctx=c.getContext('2d');
 function resize(){c.width=c.offsetWidth;c.height=c.offsetHeight;}
 window.onresize=resize;resize();
 window.__ENVGEN__=window.__ENVGEN__||{};
-window.__ENVGEN__.drawEnvelope=function(points,width,height){
-if(!points||points.length===0)return;
+window.__ENVGEN__.drawEnvelopes=function(lanes,width,height){
+if(!lanes||lanes.length===0)return;
 var w=c.width,h=c.height;
 if(width>0&&height>0){w=width;h=height;c.width=w;c.height=h;}
 ctx.clearRect(0,0,w,h);
-var smoothed=points.slice();
-for(var i=0;i<smoothed.length;i++){
-  if(i>=2&&i<smoothed.length-2)
-    smoothed[i]=(points[i-2]+4*points[i-1]+6*points[i]+4*points[i+1]+points[i+2])/16;
-  else if(i>=1&&i<smoothed.length-1)
-    smoothed[i]=(points[i-1]+points[i]*2+points[i+1])/4;
+var maxVal=0;
+for(var L=0;L<lanes.length;L++){
+  var points=lanes[L].points;
+  if(!points||points.length===0)continue;
+  var smoothed=points.slice();
+  for(var i=0;i<smoothed.length;i++){
+    if(i>=2&&i<smoothed.length-2)
+      smoothed[i]=(points[i-2]+4*points[i-1]+6*points[i]+4*points[i+1]+points[i+2])/16;
+    else if(i>=1&&i<smoothed.length-1)
+      smoothed[i]=(points[i-1]+points[i]*2+points[i+1])/4;
+    if(smoothed[i]>maxVal)maxVal=smoothed[i];
+  }
+  lanes[L]._smoothed=smoothed;
 }
-var maxVal=Math.max.apply(null,smoothed);
 if(maxVal<0.01)return;
 var scale=(h*0.9)/maxVal;
-ctx.strokeStyle='rgba(0,255,170,0.8)';ctx.lineWidth=2;ctx.lineJoin='round';ctx.lineCap='round';
-ctx.beginPath();
-for(var i=0;i<smoothed.length;i++){
-var x=(smoothed.length>1)?(i/(smoothed.length-1))*w:0;
-var y=h-smoothed[i]*scale;
-if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+ctx.lineWidth=2;ctx.lineJoin='round';ctx.lineCap='round';
+for(var L=0;L<lanes.length;L++){
+  var smoothed=lanes[L]._smoothed;
+  if(!smoothed)continue;
+  ctx.strokeStyle=lanes[L].color||'rgba(0,255,170,0.8)';
+  ctx.beginPath();
+  for(var i=0;i<smoothed.length;i++){
+    var x=(smoothed.length>1)?(i/(smoothed.length-1))*w:0;
+    var y=h-smoothed[i]*scale;
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
 }
-ctx.stroke();
 };
 })();
 </script></body></html>
@@ -85,14 +96,30 @@ ctx.stroke();
         return "data:text/html;base64," + enc;
     }
 
-    static const char* const kParamIds[] = {
-        "inputGain", "outputGain", "dryPass",
-        "lane1_step0", "lane1_step1", "lane1_step2", "lane1_step3",
-        "lane1_step4", "lane1_step5", "lane1_step6", "lane1_step7",
-        "lane1_step8", "lane1_step9", "lane1_step10", "lane1_step11",
-        "lane1_step12", "lane1_step13", "lane1_step14", "lane1_step15",
-        "lane1_attack", "lane1_hold", "lane1_decay", "lane1_rate", "lane1_destination", "lane1_amount"
-    };
+    static const juce::StringArray& getParamIds()
+    {
+        static juce::StringArray ids;
+        if (ids.isEmpty())
+        {
+            ids.add("inputGain");
+            ids.add("outputGain");
+            ids.add("dryPass");
+            ids.add("numLanes");
+            for (int lane = 1; lane <= 8; ++lane)
+            {
+                juce::String prefix = "lane" + juce::String(lane) + "_";
+                for (int step = 0; step < 16; ++step)
+                    ids.add(prefix + "step" + juce::String(step));
+                ids.add(prefix + "attack");
+                ids.add(prefix + "hold");
+                ids.add(prefix + "decay");
+                ids.add(prefix + "rate");
+                ids.add(prefix + "destination");
+                ids.add(prefix + "amount");
+            }
+        }
+        return ids;
+    }
 
     juce::File getGuiRootDirectory()
     {
@@ -131,7 +158,7 @@ EnvGenEditorWeb::EnvGenEditorWeb(EnvGenAudioProcessor& p)
     processorRef.setScopeSink(oscilloscope.get());
 
     auto& apvts = processorRef.apvts;
-    for (const auto* id : kParamIds)
+    for (const auto& id : getParamIds())
         apvts.addParameterListener(id, this);
 
     juce::WebBrowserComponent::Options options;
@@ -202,7 +229,7 @@ EnvGenEditorWeb::EnvGenEditorWeb(EnvGenAudioProcessor& p)
     {
         juce::DynamicObject::Ptr obj = new juce::DynamicObject();
         auto& apvtsRef = processorRef.apvts;
-        for (const auto* id : kParamIds)
+        for (const auto& id : getParamIds())
         {
             if (auto* param = apvtsRef.getParameter(id))
                 obj->setProperty(juce::Identifier(id), param->getValue());
@@ -230,7 +257,9 @@ EnvGenEditorWeb::EnvGenEditorWeb(EnvGenAudioProcessor& p)
     envelopeOverlayHolder = std::move(overlayWrapper);
     addAndMakeVisible(envelopeOverlayHolder.get());
     envelopeOverlayBrowser->goToURL(getEnvelopeOverlayDataUrl());
-    oscilloscope->setEnvelopeOverlayCallback([this](const float* data, int size) { pushEnvelopeToOverlay(data, size); });
+    oscilloscope->setEnvelopeOverlayCallback([this](const float* const* buffers, const int* sizes, int numLanes, const juce::Colour* colours) {
+        pushEnvelopesToOverlay(buffers, sizes, numLanes, colours);
+    });
 #endif
 
     const bool useDevEnv = juce::SystemStats::getEnvironmentVariable("ENVGEN_WEB_DEV", {}).equalsIgnoreCase("1");
@@ -256,7 +285,7 @@ EnvGenEditorWeb::~EnvGenEditorWeb()
     processorRef.setScopeSink(nullptr);
     envelopeOverlayBrowser = nullptr;
     auto& apvts = processorRef.apvts;
-    for (const auto* id : kParamIds)
+    for (const auto& id : getParamIds())
         apvts.removeParameterListener(id, this);
 }
 
@@ -327,22 +356,43 @@ juce::String EnvGenEditorWeb::escapeJsString(const juce::String& s)
     return out;
 }
 
-void EnvGenEditorWeb::pushEnvelopeToOverlay(const float* data, int size)
+juce::String EnvGenEditorWeb::laneColourToCssRgba(juce::Colour c)
 {
-    if (envelopeOverlayBrowser == nullptr || size <= 0)
+    return "rgba(" + juce::String(c.getRed()) + "," + juce::String(c.getGreen()) + ","
+         + juce::String(c.getBlue()) + "," + juce::String(c.getFloatAlpha()) + ")";
+}
+
+void EnvGenEditorWeb::pushEnvelopesToOverlay(const float* const* buffers, const int* sizes, int numLanes, const juce::Colour* colours)
+{
+    if (envelopeOverlayBrowser == nullptr || numLanes <= 0 || buffers == nullptr || sizes == nullptr || colours == nullptr)
         return;
     int w = (envelopeOverlayHolder != nullptr) ? envelopeOverlayHolder->getWidth() : 0;
     int h = (envelopeOverlayHolder != nullptr) ? envelopeOverlayHolder->getHeight() : 0;
-    juce::String arrayStr = "[";
-    for (int i = 0; i < size; ++i)
+    juce::String lanesJson = "[";
+    bool firstLane = true;
+    for (int lane = 0; lane < numLanes; ++lane)
     {
-        if (i > 0)
-            arrayStr << ",";
-        arrayStr << juce::String(data[i]);
+        int size = sizes[lane];
+        const float* data = buffers[lane];
+        if (size <= 0 || data == nullptr)
+            continue;
+        if (!firstLane)
+            lanesJson << ",";
+        firstLane = false;
+        juce::String pointsStr = "[";
+        for (int i = 0; i < size; ++i)
+        {
+            if (i > 0)
+                pointsStr << ",";
+            pointsStr << juce::String(data[i]);
+        }
+        pointsStr << "]";
+        juce::String colorStr = laneColourToCssRgba(colours[lane]);
+        lanesJson << "{\"points\":" << pointsStr << ",\"color\":\"" << colorStr.replace("\"", "\\\"") << "\"}";
     }
-    arrayStr << "]";
-    juce::String script = "if (window.__ENVGEN__ && typeof window.__ENVGEN__.drawEnvelope === 'function') { window.__ENVGEN__.drawEnvelope("
-        + arrayStr + ", " + juce::String(w) + ", " + juce::String(h) + "); }";
+    lanesJson << "]";
+    juce::String script = "if (window.__ENVGEN__ && typeof window.__ENVGEN__.drawEnvelopes === 'function') { window.__ENVGEN__.drawEnvelopes("
+        + lanesJson + ", " + juce::String(w) + ", " + juce::String(h) + "); }";
     envelopeOverlayBrowser->evaluateJavascript(script, nullptr);
 }
 

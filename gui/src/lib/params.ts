@@ -15,20 +15,45 @@ export interface ParamMeta {
 }
 
 const RATE_CHOICES = ["1/1", "1/2", "1/4", "1/8", "1/16", "1/32"];
+const NUM_LANES = 8;
 
-const stepIds = Array.from({ length: 16 }, (_, i) => `lane1_step${i}`);
+function laneStepIds(laneNum: number): string[] {
+  return Array.from({ length: 16 }, (_, i) => `lane${laneNum}_step${i}`);
+}
+
+function laneEnvelopeParamMeta(laneNum: number): ParamMeta[] {
+  const prefix = `lane${laneNum}_`;
+  return [
+    { id: `${prefix}attack`, label: "Attack", min: 0.001, max: 10, step: 0.001, unit: "s", type: "float", skew: 0.3 },
+    { id: `${prefix}hold`, label: "Hold", min: 0, max: 10, step: 0.001, unit: "s", type: "float", skew: 0.3 },
+    { id: `${prefix}decay`, label: "Decay", min: 0.001, max: 10, step: 0.001, unit: "s", type: "float", skew: 0.3 },
+    { id: `${prefix}rate`, label: "Rate", type: "choice", choices: RATE_CHOICES },
+    { id: `${prefix}destination`, label: "Assign", type: "choice", choices: ["None", "Amplitude"] },
+    { id: `${prefix}amount`, label: "Amount", min: -1, max: 1, step: 0.01, type: "float" },
+  ];
+}
+
+export const laneParamIds = (() => {
+  const ids: string[] = [];
+  for (let n = 1; n <= NUM_LANES; n++) {
+    ids.push(...laneStepIds(n));
+    ids.push(`lane${n}_attack`, `lane${n}_hold`, `lane${n}_decay`, `lane${n}_rate`, `lane${n}_destination`, `lane${n}_amount`);
+  }
+  return ids;
+})();
 
 export const PARAMS: ParamMeta[] = [
   { id: "inputGain", label: "Input Gain", min: -24, max: 24, step: 0.1, unit: "dB", type: "float" },
   { id: "outputGain", label: "Output Gain", min: -24, max: 24, step: 0.1, unit: "dB", type: "float" },
   { id: "dryPass", label: "Dry", type: "bool" },
-  ...stepIds.map((id, i) => ({ id, label: `Step ${i + 1}`, type: "bool" as const })),
-  { id: "lane1_attack", label: "Attack", min: 0.001, max: 10, step: 0.001, unit: "s", type: "float", skew: 0.3 },
-  { id: "lane1_hold", label: "Hold", min: 0, max: 10, step: 0.001, unit: "s", type: "float", skew: 0.3 },
-  { id: "lane1_decay", label: "Decay", min: 0.001, max: 10, step: 0.001, unit: "s", type: "float", skew: 0.3 },
-  { id: "lane1_rate", label: "Rate", type: "choice", choices: RATE_CHOICES },
-  { id: "lane1_destination", label: "Assign", type: "choice", choices: ["None", "Amplitude"] },
-  { id: "lane1_amount", label: "Amount", min: -1, max: 1, step: 0.01, type: "float" },
+  { id: "numLanes", label: "Lanes", min: 0, max: 8, step: 1, type: "float" },
+  ...Array.from({ length: NUM_LANES }, (_, laneIndex) => {
+    const laneNum = laneIndex + 1;
+    return [
+      ...laneStepIds(laneNum).map((id, i) => ({ id, label: `Step ${i + 1}`, type: "bool" as const })),
+      ...laneEnvelopeParamMeta(laneNum),
+    ];
+  }).flat(),
 ];
 
 export function getParamMeta(id: string): ParamMeta | undefined {

@@ -33,8 +33,9 @@ private:
 
     void pushParameterToWeb(const juce::String& id, float value);
     void tryApplyOverlayTransparency();
-    void pushEnvelopeToOverlay(const float* data, int size);
+    void pushEnvelopesToOverlay(const float* const* buffers, const int* sizes, int numLanes, const juce::Colour* colours);
     static juce::String escapeJsString(const juce::String& s);
+    static juce::String laneColourToCssRgba(juce::Colour c);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EnvGenEditorWeb)
 };

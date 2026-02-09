@@ -23,7 +23,8 @@ OsciloscopeComponent::OsciloscopeComponent()
 {
     // Initialize measure buffers
     measureBuffer.resize(measureBufferCapacity, 0.0f);
-    envelopeMeasureBuffer.resize(measureBufferCapacity, 0.0f);
+    for (auto& buf : envelopeMeasureBuffers)
+        buf.resize(static_cast<size_t>(measureBufferCapacity), 0.0f);
     
     // Initialize playhead info
     playheadInfo.resetToDefault();
@@ -59,7 +60,7 @@ void OsciloscopeComponent::paint(juce::Graphics& g)
     int centerY = displayArea.getCentreY();
     g.drawHorizontalLine(centerY, static_cast<float>(displayArea.getX()), static_cast<float>(displayArea.getRight()));
     
-    // Draw envelope first (behind waveform) unless an overlay callback is set (overlay draws it)
+    // Draw envelope(s) first (behind waveform) unless an overlay callback is set (overlay draws it)
     if (showEnvelope && !envelopeOverlayCallback)
         drawEnvelope(g, displayArea);
     
@@ -82,13 +83,33 @@ void OsciloscopeComponent::timerCallback()
         repaint();
         if (envelopeOverlayCallback)
         {
-            std::vector<float> copy;
+            std::array<std::vector<float>, kMaxEnvelopeLanes> copies;
+            std::array<const float*, kMaxEnvelopeLanes> ptrs;
+            std::array<int, kMaxEnvelopeLanes> sizes;
+            juce::Colour colours[kMaxEnvelopeLanes];
+            int numLanes = 0;
             {
                 const juce::ScopedLock lock(bufferLock);
-                copy = envelopeDisplayBuffer;
+                for (int i = 0; i < kMaxEnvelopeLanes; ++i)
+                {
+                    if (!envelopeDisplayBuffers[static_cast<size_t>(i)].empty())
+                    {
+                        copies[static_cast<size_t>(i)] = envelopeDisplayBuffers[static_cast<size_t>(i)];
+                        ptrs[static_cast<size_t>(i)] = copies[static_cast<size_t>(i)].data();
+                        sizes[static_cast<size_t>(i)] = static_cast<int>(copies[static_cast<size_t>(i)].size());
+                        colours[i] = getLaneColour(i);
+                        numLanes = i + 1;
+                    }
+                    else
+                    {
+                        ptrs[static_cast<size_t>(i)] = nullptr;
+                        sizes[static_cast<size_t>(i)] = 0;
+                        colours[i] = getLaneColour(i);
+                    }
+                }
             }
-            if (!copy.empty())
-                envelopeOverlayCallback(copy.data(), static_cast<int>(copy.size()));
+            if (numLanes > 0)
+                envelopeOverlayCallback(ptrs.data(), sizes.data(), numLanes, colours);
         }
     }
 }
@@ -120,21 +141,24 @@ void OsciloscopeComponent::pushBuffer(const float* samples, int numSamples)
 
 void OsciloscopeComponent::pushEnvelopeBuffer(const float* samples, int numSamples)
 {
+    pushEnvelopeBuffer(samples, numSamples, 0);
+}
+
+void OsciloscopeComponent::pushEnvelopeBuffer(const float* samples, int numSamples, int laneIndex)
+{
+    if (laneIndex < 0 || laneIndex >= kMaxEnvelopeLanes)
+        return;
     const juce::ScopedLock lock(bufferLock);
-    
-    // Add envelope samples - note: we use the same write position as audio buffer
-    // so they stay in sync. The audio pushBuffer increments measureBufferWritePosition,
-    // so we write at the position BEFORE the current write position.
+    auto& buf = envelopeMeasureBuffers[static_cast<size_t>(laneIndex)];
+    if (buf.size() != static_cast<size_t>(measureBufferCapacity))
+        buf.resize(static_cast<size_t>(measureBufferCapacity), 0.0f);
     int startPos = measureBufferWritePosition - numSamples;
     if (startPos < 0) startPos = 0;
-    
     for (int i = 0; i < numSamples; ++i)
     {
         int writePos = startPos + i;
         if (writePos >= 0 && writePos < measureBufferCapacity)
-        {
-            envelopeMeasureBuffer[writePos] = samples[i];
-        }
+            buf[static_cast<size_t>(writePos)] = samples[i];
     }
 }
 
@@ -200,9 +224,9 @@ void OsciloscopeComponent::setVerticalZoom(float zoom)
 
 void OsciloscopeComponent::resetMeasureBuffer()
 {
-    // Clear the measure buffers
     std::fill(measureBuffer.begin(), measureBuffer.end(), 0.0f);
-    std::fill(envelopeMeasureBuffer.begin(), envelopeMeasureBuffer.end(), 0.0f);
+    for (auto& buf : envelopeMeasureBuffers)
+        std::fill(buf.begin(), buf.end(), 0.0f);
     measureBufferWritePosition = 0;
     samplesInCurrentMeasure = 0;
 }
@@ -215,17 +239,19 @@ void OsciloscopeComponent::updateDisplayBuffer()
     if (width <= 0)
         return;
     
-    // Resize display buffers to match component width
     if (displayBuffer.size() != static_cast<size_t>(width))
-        displayBuffer.resize(width, 0.0f);
-    if (envelopeDisplayBuffer.size() != static_cast<size_t>(width))
-        envelopeDisplayBuffer.resize(width, 0.0f);
+        displayBuffer.resize(static_cast<size_t>(width), 0.0f);
+    for (auto& buf : envelopeDisplayBuffers)
+    {
+        if (buf.size() != static_cast<size_t>(width))
+            buf.resize(static_cast<size_t>(width), 0.0f);
+    }
     
     if (measureBufferWritePosition == 0)
     {
-        // No samples yet - clear display
         std::fill(displayBuffer.begin(), displayBuffer.end(), 0.0f);
-        std::fill(envelopeDisplayBuffer.begin(), envelopeDisplayBuffer.end(), 0.0f);
+        for (auto& buf : envelopeDisplayBuffers)
+            std::fill(buf.begin(), buf.end(), 0.0f);
         return;
     }
     
@@ -254,17 +280,23 @@ void OsciloscopeComponent::updateDisplayBuffer()
         else
             displayBuffer[x] = 0.0f;
 
-        // Envelope: max over the sample range that maps to this pixel column (peak-hold)
+        // Envelope: per-lane peak-hold
         int startIdx = static_cast<int>((x / widthF) * expectedTotalSamples);
         int endIdx = static_cast<int>(((x + 1) / widthF) * expectedTotalSamples);
         if (endIdx <= startIdx)
             endIdx = startIdx + 1;
         startIdx = juce::jlimit(0, measureBufferWritePosition, startIdx);
         endIdx = juce::jlimit(0, measureBufferWritePosition, endIdx);
-        float peak = 0.0f;
-        for (int k = startIdx; k < endIdx; ++k)
-            peak = juce::jmax(peak, envelopeMeasureBuffer[static_cast<size_t>(k)]);
-        envelopeDisplayBuffer[static_cast<size_t>(x)] = peak;
+        for (int lane = 0; lane < kMaxEnvelopeLanes; ++lane)
+        {
+            const auto& measBuf = envelopeMeasureBuffers[static_cast<size_t>(lane)];
+            if (measBuf.empty())
+                continue;
+            float peak = 0.0f;
+            for (int k = startIdx; k < endIdx; ++k)
+                peak = juce::jmax(peak, measBuf[static_cast<size_t>(k)]);
+            envelopeDisplayBuffers[static_cast<size_t>(lane)][static_cast<size_t>(x)] = peak;
+        }
     }
 }
 
@@ -378,69 +410,87 @@ void OsciloscopeComponent::drawWaveform(juce::Graphics& g, juce::Rectangle<int> 
     g.strokePath(wavePath, juce::PathStrokeType(1.5f));
 }
 
+juce::Colour OsciloscopeComponent::getLaneColour(int laneIndex)
+{
+    static const juce::Colour palette[] = {
+        juce::Colour(0xff00ffaa),  // 0: cyan-green
+        juce::Colour(0xffff8c00),  // 1: orange
+        juce::Colour(0xff4da6ff),  // 2: blue
+        juce::Colour(0xffe040fb),  // 3: magenta
+        juce::Colour(0xffffeb3b),  // 4: yellow
+        juce::Colour(0xff26a69a),  // 5: teal
+        juce::Colour(0xffff7043),  // 6: coral
+        juce::Colour(0xffb39ddb),  // 7: lavender
+    };
+    int i = juce::jlimit(0, kMaxEnvelopeLanes - 1, laneIndex);
+    return palette[i];
+}
+
 void OsciloscopeComponent::drawEnvelope(juce::Graphics& g, juce::Rectangle<int> bounds)
 {
-    if (envelopeDisplayBuffer.empty())
-        return;
-    
     int width = bounds.getWidth();
     int height = bounds.getHeight();
-    int samplesToDraw = juce::jmin(width, static_cast<int>(envelopeDisplayBuffer.size()));
-    if (samplesToDraw <= 0)
+    if (width <= 0 || height <= 0)
         return;
-
-    // 5-point binomial smoothing [1,4,6,4,1]/16 for interior; 3-point at edges
-    std::vector<float> smoothed(static_cast<size_t>(samplesToDraw));
-    const float one16 = 1.0f / 16.0f;
-    for (int x = 0; x < samplesToDraw; ++x)
-    {
-        float v = envelopeDisplayBuffer[static_cast<size_t>(x)];
-        if (x >= 2 && x < samplesToDraw - 2)
-            v = (envelopeDisplayBuffer[static_cast<size_t>(x - 2)] + 4.0f * envelopeDisplayBuffer[static_cast<size_t>(x - 1)]
-                 + 6.0f * v + 4.0f * envelopeDisplayBuffer[static_cast<size_t>(x + 1)]
-                 + envelopeDisplayBuffer[static_cast<size_t>(x + 2)]) * one16;
-        else if (x > 0 && x < samplesToDraw - 1)
-            v = (envelopeDisplayBuffer[static_cast<size_t>(x - 1)] + 2.0f * v + envelopeDisplayBuffer[static_cast<size_t>(x + 1)]) * 0.25f;
-        smoothed[static_cast<size_t>(x)] = v;
-    }
 
     float maxEnvValue = 0.0f;
-    for (int x = 0; x < samplesToDraw; ++x)
-        maxEnvValue = juce::jmax(maxEnvValue, smoothed[static_cast<size_t>(x)]);
-    
-    if (maxEnvValue < 0.01f)
-        return;
-    
-    float envelopeScale = (height * 0.9f) / maxEnvValue;
-    
-    g.setColour(envelopeColour.withAlpha(0.8f));
-    
-    juce::Path envPath;
-    bool pathStarted = false;
-    
-    for (int x = 0; x < samplesToDraw; ++x)
+    const float one16 = 1.0f / 16.0f;
+
+    for (int lane = 0; lane < kMaxEnvelopeLanes; ++lane)
     {
-        float envValue = smoothed[static_cast<size_t>(x)];
-        float pixelY = bounds.getBottom() - (envValue * envelopeScale);
-        
-        // Clamp to bounds
-        pixelY = juce::jlimit(static_cast<float>(bounds.getY()),
-                            static_cast<float>(bounds.getBottom()),
-                            pixelY);
-        
-        if (!pathStarted)
+        const auto& dispBuf = envelopeDisplayBuffers[static_cast<size_t>(lane)];
+        int samplesToDraw = juce::jmin(width, static_cast<int>(dispBuf.size()));
+        if (samplesToDraw <= 0)
+            continue;
+        for (int x = 0; x < samplesToDraw; ++x)
         {
-            envPath.startNewSubPath(static_cast<float>(bounds.getX() + x), pixelY);
-            pathStarted = true;
-        }
-        else
-        {
-            envPath.lineTo(static_cast<float>(bounds.getX() + x), pixelY);
+            float v = dispBuf[static_cast<size_t>(x)];
+            if (x >= 2 && x < samplesToDraw - 2)
+                v = (dispBuf[static_cast<size_t>(x - 2)] + 4.0f * dispBuf[static_cast<size_t>(x - 1)]
+                     + 6.0f * v + 4.0f * dispBuf[static_cast<size_t>(x + 1)] + dispBuf[static_cast<size_t>(x + 2)]) * one16;
+            else if (x > 0 && x < samplesToDraw - 1)
+                v = (dispBuf[static_cast<size_t>(x - 1)] + 2.0f * v + dispBuf[static_cast<size_t>(x + 1)]) * 0.25f;
+            maxEnvValue = juce::jmax(maxEnvValue, v);
         }
     }
-    
-    // Draw the envelope path
-    g.strokePath(envPath, juce::PathStrokeType(2.0f));
+    if (maxEnvValue < 0.01f)
+        return;
+    float envelopeScale = (height * 0.9f) / maxEnvValue;
+
+    for (int lane = 0; lane < kMaxEnvelopeLanes; ++lane)
+    {
+        const auto& dispBuf = envelopeDisplayBuffers[static_cast<size_t>(lane)];
+        int samplesToDraw = juce::jmin(width, static_cast<int>(dispBuf.size()));
+        if (samplesToDraw <= 0)
+            continue;
+        std::vector<float> smoothed(static_cast<size_t>(samplesToDraw));
+        for (int x = 0; x < samplesToDraw; ++x)
+        {
+            float v = dispBuf[static_cast<size_t>(x)];
+            if (x >= 2 && x < samplesToDraw - 2)
+                v = (dispBuf[static_cast<size_t>(x - 2)] + 4.0f * dispBuf[static_cast<size_t>(x - 1)]
+                     + 6.0f * v + 4.0f * dispBuf[static_cast<size_t>(x + 1)] + dispBuf[static_cast<size_t>(x + 2)]) * one16;
+            else if (x > 0 && x < samplesToDraw - 1)
+                v = (dispBuf[static_cast<size_t>(x - 1)] + 2.0f * v + dispBuf[static_cast<size_t>(x + 1)]) * 0.25f;
+            smoothed[static_cast<size_t>(x)] = v;
+        }
+        g.setColour(getLaneColour(lane).withAlpha(0.8f));
+        juce::Path envPath;
+        bool pathStarted = false;
+        for (int x = 0; x < samplesToDraw; ++x)
+        {
+            float pixelY = bounds.getBottom() - (smoothed[static_cast<size_t>(x)] * envelopeScale);
+            pixelY = juce::jlimit(static_cast<float>(bounds.getY()), static_cast<float>(bounds.getBottom()), pixelY);
+            if (!pathStarted)
+            {
+                envPath.startNewSubPath(static_cast<float>(bounds.getX() + x), pixelY);
+                pathStarted = true;
+            }
+            else
+                envPath.lineTo(static_cast<float>(bounds.getX() + x), pixelY);
+        }
+        g.strokePath(envPath, juce::PathStrokeType(2.0f));
+    }
 }
 
 float OsciloscopeComponent::getScaledSample(float sample, int height) const

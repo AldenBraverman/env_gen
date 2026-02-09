@@ -29,6 +29,25 @@ import {
 
 type State = Record<string, number>;
 
+function laneParamIdsForLane(laneNum: number): string[] {
+  const ids: string[] = [];
+  for (let i = 0; i < 16; i++) ids.push(`lane${laneNum}_step${i}`);
+  ids.push(`lane${laneNum}_attack`, `lane${laneNum}_hold`, `lane${laneNum}_decay`, `lane${laneNum}_rate`, `lane${laneNum}_destination`, `lane${laneNum}_amount`);
+  return ids;
+}
+
+/** Fixed palette for lane colours (index 0..7). Must match C++ OscilloscopeComponent::getLaneColour. */
+export const LANE_COLOURS = [
+  "#00ffaa", // 0: cyan-green
+  "#ff8c00", // 1: orange
+  "#4da6ff", // 2: blue
+  "#e040fb", // 3: magenta
+  "#ffeb3b", // 4: yellow
+  "#26a69a", // 5: teal
+  "#ff7043", // 6: coral
+  "#b39ddb", // 7: lavender
+];
+
 function ParamControl({
   meta,
   value,
@@ -118,6 +137,141 @@ function ParamControl({
   );
 }
 
+function EnvelopeSection({
+  state,
+  setStateParam,
+  onDragStart,
+  onDragEnd,
+  getParamMeta,
+}: {
+  state: State;
+  setStateParam: (id: string, n: number) => void;
+  onDragStart: (paramId: string) => void;
+  onDragEnd: () => void;
+  getParamMeta: (id: string) => ParamMeta | undefined;
+}) {
+  const numLanesNorm = state["numLanes"] ?? 0;
+  const numLanes = Math.round(normalizedToReal(getParamMeta("numLanes") ?? { id: "", label: "", type: "float", min: 0, max: 8 }, numLanesNorm));
+  const safeNumLanes = Math.max(0, Math.min(8, numLanes));
+
+  const handleAddLane = () => {
+    if (safeNumLanes >= 8) return;
+    const next = safeNumLanes + 1;
+    setStateParam("numLanes", next / 8);
+  };
+
+  const handleRemoveLane = (removeIndex: number) => {
+    if (safeNumLanes <= 0 || removeIndex < 0 || removeIndex >= safeNumLanes) return;
+    // Copy lane (j+2) -> lane (j+1) for j = removeIndex .. numLanes-2 so we read from untouched lanes
+    for (let j = removeIndex; j <= safeNumLanes - 2; j++) {
+      const srcLane = j + 2;
+      const destLane = j + 1;
+      const srcIds = laneParamIdsForLane(srcLane);
+      const destIds = laneParamIdsForLane(destLane);
+      srcIds.forEach((id, idx) => {
+        const val = state[id] ?? 0;
+        setStateParam(destIds[idx], val);
+      });
+    }
+    setStateParam("numLanes", (safeNumLanes - 1) / 8);
+  };
+
+  if (safeNumLanes === 0) {
+    return (
+      <div className="flex items-center gap-2">
+        <Button variant="outline" size="sm" onClick={handleAddLane} aria-label="Add lane">
+          +
+        </Button>
+        <span className="text-xs text-muted-foreground">Add lane</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleAddLane}
+          disabled={safeNumLanes >= 8}
+          aria-label="Add lane"
+        >
+          +
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          {safeNumLanes} lane{safeNumLanes !== 1 ? "s" : ""}
+        </span>
+      </div>
+      {Array.from({ length: safeNumLanes }, (_, i) => {
+        const laneNum = i + 1;
+        const stepIds = Array.from({ length: 16 }, (_, s) => `lane${laneNum}_step${s}`);
+        const envIds = [`lane${laneNum}_attack`, `lane${laneNum}_hold`, `lane${laneNum}_decay`, `lane${laneNum}_rate`, `lane${laneNum}_destination`, `lane${laneNum}_amount`];
+        const laneColor = LANE_COLOURS[i] ?? LANE_COLOURS[0];
+        return (
+          <div
+            key={laneNum}
+            className="rounded-md border border-border bg-muted/30 p-3 space-y-2"
+            style={{ borderLeftWidth: 4, borderLeftColor: laneColor }}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium" style={{ color: laneColor }}>
+                Lane {laneNum}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                onClick={() => handleRemoveLane(i)}
+                aria-label={`Remove lane ${laneNum}`}
+              >
+                -
+              </Button>
+            </div>
+            <div className="flex flex-wrap items-center gap-1">
+              <Label className="mr-2 w-12 text-xs text-muted-foreground">Steps</Label>
+              {stepIds.map((paramId) => {
+                const meta = getParamMeta(paramId);
+                if (!meta) return null;
+                const stepIndex = parseInt(paramId.replace(`lane${laneNum}_step`, ""), 10);
+                return (
+                  <Button
+                    key={paramId}
+                    variant={(state[paramId] ?? 0) >= 0.5 ? "default" : "outline"}
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() =>
+                      setStateParam(paramId, (state[paramId] ?? 0) >= 0.5 ? 0 : 1)
+                    }
+                  >
+                    {stepIndex + 1}
+                  </Button>
+                );
+              })}
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
+              {envIds.map((paramId) => {
+                const meta = getParamMeta(paramId);
+                if (!meta) return null;
+                return (
+                  <ParamControl
+                    key={paramId}
+                    meta={meta}
+                    value={state[paramId] ?? 0}
+                    onChange={(n) => setStateParam(paramId, n)}
+                    onDragStart={onDragStart}
+                    onDragEnd={onDragEnd}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function App() {
   const [state, setState] = useState<State>({});
   const draggingParamIdRef = useRef<string | null>(null);
@@ -164,57 +318,13 @@ export default function App() {
             </CardHeader>
             <CardContent className="space-y-3">
               {section.id === "ENVELOPE" ? (
-                <>
-                  <div className="flex flex-wrap items-center gap-1">
-                    <Label className="mr-2 w-12 text-xs text-muted-foreground">
-                      Steps
-                    </Label>
-                    {section.paramIds
-                      .filter((id) => id.startsWith("lane1_step"))
-                      .map((paramId) => {
-                        const meta = getParamMeta(paramId);
-                        if (!meta) return null;
-                        const stepIndex = parseInt(
-                          paramId.replace("lane1_step", ""),
-                          10
-                        );
-                        return (
-                          <Button
-                            key={paramId}
-                            variant={state[paramId] >= 0.5 ? "default" : "outline"}
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() =>
-                              setStateParam(
-                                paramId,
-                                (state[paramId] ?? 0) >= 0.5 ? 0 : 1
-                              )
-                            }
-                          >
-                            {stepIndex + 1}
-                          </Button>
-                        );
-                      })}
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
-                    {section.paramIds
-                      .filter((id) => !id.startsWith("lane1_step"))
-                      .map((paramId) => {
-                        const meta = getParamMeta(paramId);
-                        if (!meta) return null;
-                        return (
-                          <ParamControl
-                            key={paramId}
-                            meta={meta}
-                            value={state[paramId] ?? 0}
-                            onChange={(n) => setStateParam(paramId, n)}
-                            onDragStart={onDragStart}
-                            onDragEnd={onDragEnd}
-                          />
-                        );
-                      })}
-                  </div>
-                </>
+                <EnvelopeSection
+                  state={state}
+                  setStateParam={setStateParam}
+                  onDragStart={onDragStart}
+                  onDragEnd={onDragEnd}
+                  getParamMeta={getParamMeta}
+                />
               ) : (
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   {section.paramIds.map((paramId) => {
